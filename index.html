@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Interactive Christmas Tree</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html, body, #root {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #050705;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont;
+      }
+      button {
+        background: transparent;
+        border: 1px solid #f1c40f;
+        color: #f1c40f;
+        padding: 14px 40px;
+        border-radius: 40px;
+        letter-spacing: 3px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <!-- React -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Three.js -->
+    <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+
+    <!-- R3F + Drei -->
+    <script src="https://unpkg.com/@react-three/fiber@8.15.12/dist/react-three-fiber.umd.js"></script>
+    <script src="https://unpkg.com/@react-three/drei@9.88.0/dist/drei.umd.js"></script>
+
+    <!-- Postprocessing -->
+    <script src="https://unpkg.com/@react-three/postprocessing@2.16.2/dist/postprocessing.umd.js"></script>
+
+    <!-- App -->
+    <script>
+      const { useState, useMemo, useRef } = React
+      const { Canvas, useFrame } = ReactThreeFiber
+      const { PerspectiveCamera, OrbitControls, Stars } = Drei
+      const { EffectComposer, Bloom, Noise, Vignette } = Postprocessing
+
+      const CONFIG = {
+        FOLIAGE: 9000,
+        ORNAMENTS: 50,
+        HEIGHT: 10,
+        RADIUS: 4
+      }
+
+      const State = {
+        TREE: 'TREE',
+        EXPLODE: 'EXPLODE',
+        SCATTER: 'SCATTER',
+        RESTORE: 'RESTORE'
+      }
+
+      const treePos = () => {
+        const y = Math.random() * CONFIG.HEIGHT
+        const r = ((CONFIG.HEIGHT - y) / CONFIG.HEIGHT) * CONFIG.RADIUS
+        const a = Math.random() * Math.PI * 2
+        return new THREE.Vector3(
+          Math.cos(a) * r,
+          y - CONFIG.HEIGHT / 2,
+          Math.sin(a) * r
+        )
+      }
+
+      const scatterPos = () =>
+        new THREE.Vector3(
+          (Math.random() - 0.5) * 25,
+          (Math.random() - 0.5) * 25,
+          (Math.random() - 0.5) * 25
+        )
+
+      function Foliage({ state }) {
+        const ref = useRef()
+
+        const data = useMemo(() => {
+          const t = new Float32Array(CONFIG.FOLIAGE * 3)
+          const s = new Float32Array(CONFIG.FOLIAGE * 3)
+          for (let i = 0; i < CONFIG.FOLIAGE; i++) {
+            const tp = treePos()
+            const sp = scatterPos()
+            t.set([tp.x, tp.y, tp.z], i * 3)
+            s.set([sp.x, sp.y, sp.z], i * 3)
+          }
+          return { t, s }
+        }, [])
+
+        useFrame((_, d) => {
+          const pos = ref.current.geometry.attributes.position.array
+          const target =
+            state === State.SCATTER || state === State.EXPLODE
+              ? data.s
+              : data.t
+          for (let i = 0; i < pos.length; i++) {
+            pos[i] += (target[i] - pos[i]) * d * 2
+          }
+          ref.current.geometry.attributes.position.needsUpdate = true
+        })
+
+        return React.createElement(
+          'points',
+          { ref },
+          React.createElement(
+            'bufferGeometry',
+            null,
+            React.createElement('bufferAttribute', {
+              attach: 'attributes-position',
+              count: CONFIG.FOLIAGE,
+              array: data.t.slice(),
+              itemSize: 3
+            })
+          ),
+          React.createElement('pointsMaterial', {
+            size: 0.04,
+            color: '#A8BBA1',
+            transparent: true,
+            opacity: 0.5
+          })
+        )
+      }
+
+      function Ornaments({ state }) {
+        const ref = useRef()
+        const temp = new THREE.Object3D()
+
+        const items = useMemo(
+          () =>
+            Array.from({ length: CONFIG.ORNAMENTS }, () => ({
+              t: treePos(),
+              s: scatterPos(),
+              p: treePos(),
+              v: new THREE.Vector3()
+            })),
+          []
+        )
+
+        useFrame((_, d) => {
+          items.forEach((o, i) => {
+            if (state === State.EXPLODE) {
+              const f = o.p.clone().normalize().multiplyScalar(10 * d)
+              o.v.add(f)
+              o.p.add(o.v)
+              o.v.multiplyScalar(0.95)
+            } else if (state === State.SCATTER) {
+              o.p.lerp(o.s, d)
+            } else {
+              o.p.lerp(o.t, d * 3)
+              o.v.set(0, 0, 0)
+            }
+            temp.position.copy(o.p)
+            temp.updateMatrix()
+            ref.current.setMatrixAt(i, temp.matrix)
+          })
+          ref.current.instanceMatrix.needsUpdate = true
+        })
+
+        return React.createElement(
+          'instancedMesh',
+          { ref, args: [null, null, CONFIG.ORNAMENTS] },
+          React.createElement('sphereGeometry', { args: [0.18, 16, 16] }),
+          React.createElement('meshStandardMaterial', {
+            color: '#F1C40F',
+            emissive: '#F1C40F',
+            emissiveIntensity: 2
+          })
+        )
+      }
+
+      function App() {
+        const [state, setState] = useState(State.TREE)
+
+        const toggle = () => {
+          if (state === State.TREE) {
+            setState(State.EXPLODE)
+            setTimeout(() => setState(State.SCATTER), 1200)
+          } else {
+            setState(State.RESTORE)
+            setTimeout(() => setState(State.TREE), 1800)
+          }
+        }
+
+        return React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(
+            'div',
+            { style: { position: 'absolute', inset: 0, pointerEvents: 'none' } },
+            React.createElement(
+              'button',
+              {
+                style: {
+                  position: 'absolute',
+                  bottom: 50,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  pointerEvents: 'auto'
+                },
+                onClick: toggle
+              },
+              state === State.TREE ? 'EXPLODE' : 'RESTORE'
+            )
+          ),
+          React.createElement(
+            Canvas,
+            null,
+            React.createElement(PerspectiveCamera, {
+              makeDefault: true,
+              position: [0, 4, 18],
+              fov: 35
+            }),
+            React.createElement(OrbitControls, { enableZoom: false }),
+            React.createElement('ambientLight', { intensity: 0.5 }),
+            React.createElement('pointLight', {
+              position: [10, 20, 10],
+              intensity: 80
+            }),
+            React.createElement(
+              'group',
+              { position: [0, -3, 0] },
+              React.createElement(Foliage, { state }),
+              React.createElement(Ornaments, { state })
+            ),
+            React.createElement(EffectComposer, null,
+              React.createElement(Bloom, { intensity: 1.4 }),
+              React.createElement(Noise, { opacity: 0.04 }),
+              React.createElement(Vignette, { darkness: 0.8 })
+            ),
+            React.createElement(Stars, { radius: 100, depth: 50, count: 2000 })
+          )
+        )
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(
+        React.createElement(App)
+      )
+    </script>
+  </body>
+</html>
