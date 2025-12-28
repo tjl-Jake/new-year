@@ -1,246 +1,767 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <title>Interactive Tree</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <style>
-    html, body, #root {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #050705;
-      font-family: system-ui, -apple-system;
-    }
-    button {
-      background: transparent;
-      border: 1px solid #f1c40f;
-      color: #f1c40f;
-      padding: 14px 36px;
-      border-radius: 40px;
-      letter-spacing: 3px;
-      cursor: pointer;
-    }
-  </style>
-</head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>2026 Golden Splendor | AI Interactive Scene</title>
+    <style>
+        :root {
+            --gold: #FFD700;
+            --dark-gold: #AA8800;
+            --bg-start: #1a1a1a;
+            --bg-end: #000000;
+        }
 
-<body>
-<div id="root"></div>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1a0f00 0%, #000000 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--gold);
+        }
 
-<!-- React -->
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
 
-<!-- Three -->
-<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to canvas */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
 
-<!-- R3F -->
-<script src="https://unpkg.com/@react-three/fiber@8.15.12/dist/react-three-fiber.umd.js"></script>
+        .hud-panel {
+            pointer-events: auto;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            color: white;
+            transition: all 0.3s ease;
+        }
 
-<!-- Drei -->
-<script src="https://unpkg.com/@react-three/drei@9.88.0/dist/drei.umd.js"></script>
+        /* Top Left: Controls */
+        #controls {
+            max-width: 300px;
+        }
 
-<!-- Postprocessing ✅ 正确 UMD -->
-<script src="https://unpkg.com/@react-three/postprocessing@2.16.2/dist/react-three-postprocessing.umd.js"></script>
+        h1 {
+            font-size: 1.2rem;
+            margin: 0 0 10px 0;
+            color: var(--gold);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--dark-gold);
+        }
 
-<script>
-const { useState, useMemo, useRef } = React
-const { Canvas, useFrame } = ReactThreeFiber
-const { PerspectiveCamera, OrbitControls, Stars } = Drei
-const { EffectComposer, Bloom, Noise, Vignette } = ReactThreePostprocessing
+        .btn {
+            background: linear-gradient(45deg, #b8860b, #ffd700);
+            border: none;
+            padding: 8px 16px;
+            color: black;
+            font-weight: bold;
+            border-radius: 20px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+            transition: transform 0.2s;
+        }
+        .btn:hover { transform: scale(1.05); }
+        .btn:active { transform: scale(0.95); }
 
-const CONFIG = {
-  FOLIAGE: 8000,
-  ORNAMENTS: 40,
-  HEIGHT: 10,
-  RADIUS: 4
-}
+        input[type="file"] {
+            display: none;
+        }
 
-const State = {
-  TREE: 'TREE',
-  EXPLODE: 'EXPLODE',
-  SCATTER: 'SCATTER'
-}
+        .upload-label {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 16px;
+            border: 1px solid var(--gold);
+            color: var(--gold);
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .upload-label:hover { background: rgba(255, 215, 0, 0.1); }
 
-const treePos = () => {
-  const y = Math.random() * CONFIG.HEIGHT
-  const r = ((CONFIG.HEIGHT - y) / CONFIG.HEIGHT) * CONFIG.RADIUS
-  const a = Math.random() * Math.PI * 2
-  return new THREE.Vector3(
-    Math.cos(a) * r,
-    y - CONFIG.HEIGHT / 2,
-    Math.sin(a) * r
-  )
-}
+        /* Bottom Right: AI Preview */
+        #cam-preview {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid var(--gold);
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            background: black;
+            pointer-events: auto;
+        }
+        
+        #webcam, #output_canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform: rotateY(180deg); /* Mirror effect */
+            object-fit: cover;
+        }
 
-const scatterPos = () =>
-  new THREE.Vector3(
-    (Math.random() - 0.5) * 25,
-    (Math.random() - 0.5) * 25,
-    (Math.random() - 0.5) * 25
-  )
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--gold);
+            font-size: 2rem;
+            text-align: center;
+            z-index: 100;
+            text-shadow: 0 0 20px var(--gold);
+            background: rgba(0,0,0,0.8);
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid var(--gold);
+        }
 
-function Foliage({ state }) {
-  const ref = useRef()
+        .instructions li {
+            font-size: 0.85rem;
+            margin-bottom: 5px;
+            color: #ddd;
+        }
+        .highlight { color: var(--gold); font-weight: bold; }
+        
+        /* Music Control */
+        #music-control {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 20;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--gold);
+            pointer-events: auto;
+        }
 
-  const data = useMemo(() => {
-    const t = new Float32Array(CONFIG.FOLIAGE * 3)
-    const s = new Float32Array(CONFIG.FOLIAGE * 3)
-    for (let i = 0; i < CONFIG.FOLIAGE; i++) {
-      const tp = treePos()
-      const sp = scatterPos()
-      t.set([tp.x, tp.y, tp.z], i * 3)
-      s.set([sp.x, sp.y, sp.z], i * 3)
-    }
-    return { t, s }
-  }, [])
-
-  useFrame((_, d) => {
-    const pos = ref.current.geometry.attributes.position.array
-    const target = state === State.SCatter ? data.s : data.t
-    for (let i = 0; i < pos.length; i++) {
-      pos[i] += (target[i] - pos[i]) * d * 2
-    }
-    ref.current.geometry.attributes.position.needsUpdate = true
-  })
-
-  return React.createElement(
-    'points',
-    { ref },
-    React.createElement(
-      'bufferGeometry',
-      null,
-      React.createElement('bufferAttribute', {
-        attach: 'attributes-position',
-        count: CONFIG.FOLIAGE,
-        array: data.t.slice(),
-        itemSize: 3
-      })
-    ),
-    React.createElement('pointsMaterial', {
-      size: 0.04,
-      color: '#A8BBA1',
-      transparent: true,
-      opacity: 0.5
-    })
-  )
-}
-
-function Ornaments({ state }) {
-  const ref = useRef()
-  const temp = new THREE.Object3D()
-
-  const items = useMemo(
-    () => Array.from({ length: CONFIG.ORNAMENTS }, () => ({
-      t: treePos(),
-      s: scatterPos(),
-      p: treePos(),
-      v: new THREE.Vector3()
-    })),
-    []
-  )
-
-  useFrame((_, d) => {
-    items.forEach((o, i) => {
-      if (state === State.EXPLODE) {
-        const f = o.p.clone().normalize().multiplyScalar(10 * d)
-        o.v.add(f)
-        o.p.add(o.v)
-        o.v.multiplyScalar(0.95)
-      } else if (state === State.SCatter) {
-        o.p.lerp(o.s, d)
-      } else {
-        o.p.lerp(o.t, d * 3)
-        o.v.set(0, 0, 0)
-      }
-      temp.position.copy(o.p)
-      temp.updateMatrix()
-      ref.current.setMatrixAt(i, temp.matrix)
-    })
-    ref.current.instanceMatrix.needsUpdate = true
-  })
-
-  return React.createElement(
-    'instancedMesh',
-    { ref, args: [null, null, CONFIG.ORNAMENTS] },
-    React.createElement('sphereGeometry', { args: [0.18, 16, 16] }),
-    React.createElement('meshStandardMaterial', {
-      color: '#F1C40F',
-      emissive: '#F1C40F',
-      emissiveIntensity: 2
-    })
-  )
-}
-
-function App() {
-  const [state, setState] = useState(State.TREE)
-
-  const toggle = () => {
-    if (state === State.TREE) {
-      setState(State.EXPLODE)
-      setTimeout(() => setState(State.SCATTER), 1200)
-    } else {
-      setState(State.TREE)
-    }
-  }
-
-  return React.createElement(
-    React.Fragment,
-    null,
-    React.createElement(
-      'div',
-      { style: { position: 'absolute', inset: 0, pointerEvents: 'none' } },
-      React.createElement(
-        'button',
+    </style>
+    <script type="importmap">
         {
-          style: {
-            position: 'absolute',
-            bottom: 50,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            pointerEvents: 'auto'
-          },
-          onClick: toggle
-        },
-        state === State.TREE ? 'EXPLODE' : 'RESTORE'
-      )
-    ),
-    React.createElement(
-      Canvas,
-      null,
-      React.createElement(PerspectiveCamera, {
-        makeDefault: true,
-        position: [0, 4, 18],
-        fov: 35
-      }),
-      React.createElement(OrbitControls, { enableZoom: false }),
-      React.createElement('ambientLight', { intensity: 0.5 }),
-      React.createElement('pointLight', {
-        position: [10, 20, 10],
-        intensity: 80
-      }),
-      React.createElement(
-        'group',
-        { position: [0, -3, 0] },
-        React.createElement(Foliage, { state }),
-        React.createElement(Ornaments, { state })
-      ),
-      React.createElement(
-        EffectComposer,
-        null,
-        React.createElement(Bloom, { intensity: 1.2 }),
-        React.createElement(Noise, { opacity: 0.04 }),
-        React.createElement(Vignette, { darkness: 0.8 })
-      ),
-      React.createElement(Stars, { radius: 100, depth: 50, count: 2000 })
-    )
-  )
-}
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm",
+                "@tweenjs/tween.js": "https://unpkg.com/@tweenjs/tween.js@23.1.1/dist/tween.esm.js"
+            }
+        }
+    </script>
+</head>
+<body>
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  React.createElement(App)
-)
-</script>
+    <div id="loading">
+        <div>2026 GOLDEN SPLENDOR</div>
+        <div style="font-size: 1rem; margin-top: 10px; opacity: 0.8;">Loading AI & 3D Engine...</div>
+    </div>
+
+    <div id="ui-layer">
+        <div class="hud-panel" id="controls">
+            <h1>Golden Splendor</h1>
+            <div class="instructions">
+                <ul>
+                    <li>🖐 <span class="highlight">张开五指</span>: 散开 (Explode)</li>
+                    <li>✊ <span class="highlight">握紧拳头</span>: 聚合 (Form Cake)</li>
+                    <li>🤏 <span class="highlight">手指捏合</span>: 聚焦 (Zoom)</li>
+                    <li>👋 <span class="highlight">手部移动</span>: 旋转场景</li>
+                </ul>
+            </div>
+            
+            <label class="upload-label" for="file-input">📷 上传照片加入盛典</label>
+            <input type="file" id="file-input" accept="image/*">
+            <button class="btn" id="btn-fullscreen">⛶ 全屏体验</button>
+        </div>
+        
+        <div id="music-control">🔇</div>
+    </div>
+
+    <div id="cam-preview">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="output_canvas"></canvas>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+        import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+        import TWEEN from '@tweenjs/tween.js';
+        import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
+
+        // --- Configuration ---
+        const CONFIG = {
+            particleCount: 1500, // Total geometric shapes
+            bloomStrength: 1.5,
+            bloomRadius: 0.4,
+            bloomThreshold: 0.1,
+            colors: [0xFFD700, 0xC0C0C0, 0xE0115F, 0x50C878], // Gold, Silver, Ruby, Emerald
+            cameraZ: 30,
+        };
+
+        // --- Global Variables ---
+        let scene, camera, renderer, composer, controls;
+        let font;
+        let handLandmarker;
+        let isScatter = false;
+        let isZoomed = false;
+        let videoElement, canvasElement, canvasCtx;
+        let particles = []; // Array to store custom logic for instances
+        let instancedMesh;
+        let dummy = new THREE.Object3D();
+        let photoMeshes = [];
+        let time = 0;
+        let textMeshGroup;
+        let goldDustSystem;
+        let currentState = 'INTRO'; // INTRO, MAIN
+
+        // Music dummy
+        let musicPlaying = false;
+        const musicBtn = document.getElementById('music-control');
+        musicBtn.addEventListener('click', () => {
+            musicPlaying = !musicPlaying;
+            musicBtn.textContent = musicPlaying ? '🔊' : '🔇';
+            // In a real app, play Audio object here
+        });
+
+        // --- Initialization ---
+        async function init() {
+            // 1. Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050300); // Deep dark gold-black
+            scene.fog = new THREE.FogExp2(0x050300, 0.02);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, CONFIG.cameraZ);
+
+            renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.toneMapping = THREE.ReinhardToneMapping;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // 2. Post Processing (Bloom)
+            const renderScene = new RenderPass(scene, camera);
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+            bloomPass.threshold = CONFIG.bloomThreshold;
+            bloomPass.strength = CONFIG.bloomStrength;
+            bloomPass.radius = CONFIG.bloomRadius;
+
+            composer = new EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
+
+            // 3. Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffd700, 2);
+            dirLight.position.set(10, 10, 10);
+            scene.add(dirLight);
+            const pointLight = new THREE.PointLight(0xff0000, 2, 50); // Ruby glow
+            pointLight.position.set(0, 0, 0);
+            scene.add(pointLight);
+
+            // 4. Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.5;
+
+            // 5. Load Font
+            const loader = new FontLoader();
+            try {
+                // Using standard font from three.js examples
+                font = await new Promise((resolve, reject) => {
+                    loader.load('https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json', resolve, undefined, reject);
+                });
+            } catch (e) {
+                console.error("Font load failed", e);
+            }
+
+            // 6. MediaPipe Setup
+            await setupMediaPipe();
+
+            // 7. Start Intro
+            document.getElementById('loading').style.display = 'none';
+            startCountdown();
+
+            // 8. Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            document.getElementById('file-input').addEventListener('change', handleImageUpload);
+            document.getElementById('btn-fullscreen').addEventListener('click', toggleFullScreen);
+
+            animate();
+        }
+
+        // --- Intro Sequence ---
+        function startCountdown() {
+            const sequence = ["5", "4", "3", "2", "1", "2026"];
+            let delay = 0;
+
+            sequence.forEach((text, index) => {
+                setTimeout(() => {
+                    createVolumetricText(text, index === sequence.length - 1);
+                }, delay);
+                delay += (index === sequence.length - 1) ? 2000 : 1000;
+            });
+
+            setTimeout(() => {
+                // Warp speed effect
+                warpSpeedTransition();
+            }, delay + 2000);
+        }
+
+        function createVolumetricText(text, isLast) {
+            if (textMeshGroup) scene.remove(textMeshGroup);
+
+            const geometry = new TextGeometry(text, {
+                font: font,
+                size: isLast ? 8 : 10,
+                height: 1,
+                curveSegments: 12,
+                bevelEnabled: true,
+                bevelThickness: 0.5,
+                bevelSize: 0.3,
+                bevelSegments: 5
+            });
+
+            geometry.center();
+            
+            // Create particles from geometry vertices
+            // Ideally we sample points, but for simplicity, we use vertices here
+            // or just render the mesh with wireframe/points material
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xFFD700,
+                emissive: 0xffaa00,
+                emissiveIntensity: 0.5,
+                roughness: 0.2,
+                metalness: 1.0
+            });
+
+            textMeshGroup = new THREE.Mesh(geometry, material);
+            scene.add(textMeshGroup);
+
+            // Simple scale animation
+            textMeshGroup.scale.set(0,0,0);
+            new TWEEN.Tween(textMeshGroup.scale)
+                .to({x:1, y:1, z:1}, 500)
+                .easing(TWEEN.Easing.Back.Out)
+                .start();
+        }
+
+        function warpSpeedTransition() {
+            if (textMeshGroup) {
+                new TWEEN.Tween(textMeshGroup.scale)
+                    .to({x: 5, y: 5, z: 5}, 500)
+                    .easing(TWEEN.Easing.Exponential.In)
+                    .onComplete(() => scene.remove(textMeshGroup))
+                    .start();
+                
+                new TWEEN.Tween(textMeshGroup.material)
+                    .to({opacity: 0}, 500)
+                    .start();
+            }
+
+            // Camera Zoom
+            new TWEEN.Tween(camera.position)
+                .to({z: 100}, 500)
+                .yoyo(true)
+                .repeat(1)
+                .onComplete(() => {
+                    initMainScene();
+                })
+                .start();
+        }
+
+        // --- Main Scene Creation ---
+        function initMainScene() {
+            currentState = 'MAIN';
+            
+            // Create Instanced Mesh for Geometries
+            const geometry = new THREE.IcosahedronGeometry(0.5, 0); // Low poly gems
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.1,
+                metalness: 0.8,
+            });
+
+            instancedMesh = new THREE.InstancedMesh(geometry, material, CONFIG.particleCount);
+            instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            scene.add(instancedMesh);
+
+            // Initialize Particles Data
+            const colors = [
+                new THREE.Color(CONFIG.colors[0]), // Gold
+                new THREE.Color(CONFIG.colors[1]), // Silver
+                new THREE.Color(CONFIG.colors[2]), // Ruby
+                new THREE.Color(CONFIG.colors[3])  // Emerald
+            ];
+
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                // Determine material color for this instance
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                instancedMesh.setColorAt(i, color);
+
+                // Calculate Target Positions
+                
+                // 1. Tree/Cake State (Cylindrical layers)
+                const layer = Math.floor(Math.random() * 5); // 5 layers
+                const radius = 2 + (5 - layer) * 1.5;
+                const angle = Math.random() * Math.PI * 2;
+                const yTree = (layer * 2) - 5 + (Math.random() * 1);
+                const xTree = Math.cos(angle) * radius;
+                const zTree = Math.sin(angle) * radius;
+
+                // 2. Scatter State (Sphere)
+                const rScatter = 15 + Math.random() * 10;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const xScatter = rScatter * Math.sin(phi) * Math.cos(theta);
+                const yScatter = rScatter * Math.sin(phi) * Math.sin(theta);
+                const zScatter = rScatter * Math.cos(phi);
+
+                particles.push({
+                    id: i,
+                    currentPos: new THREE.Vector3(xTree, yTree, zTree), // Start at Tree
+                    treePos: new THREE.Vector3(xTree, yTree, zTree),
+                    scatterPos: new THREE.Vector3(xScatter, yScatter, zScatter),
+                    velocity: new THREE.Vector3(0,0,0)
+                });
+
+                // Set initial position
+                dummy.position.set(xTree, yTree, zTree);
+                dummy.updateMatrix();
+                instancedMesh.setMatrixAt(i, dummy.matrix);
+            }
+            
+            instancedMesh.instanceMatrix.needsUpdate = true;
+            instancedMesh.instanceColor.needsUpdate = true;
+
+            // Add Gold Dust
+            createGoldDust();
+        }
+
+        function createGoldDust() {
+            const particlesGeo = new THREE.BufferGeometry();
+            const count = 2000;
+            const posArray = new Float32Array(count * 3);
+            
+            for(let i=0; i<count * 3; i++) {
+                posArray[i] = (Math.random() - 0.5) * 60;
+            }
+            
+            particlesGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 0.1,
+                color: 0xffd700,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending
+            });
+            
+            goldDustSystem = new THREE.Points(particlesGeo, material);
+            scene.add(goldDustSystem);
+        }
+
+        // --- Logic: State Switching ---
+        function switchState(newState) {
+            if (currentState !== 'MAIN') return;
+            
+            if (newState === 'SCATTER' && !isScatter) {
+                isScatter = true;
+                animateParticlesTo(true);
+                // Expand photos
+                photoMeshes.forEach(p => {
+                    new TWEEN.Tween(p.mesh.position).to(p.scatterPos, 2000).easing(TWEEN.Easing.Cubic.Out).start();
+                    new TWEEN.Tween(p.mesh.rotation).to({x: Math.random(), y: Math.random(), z: Math.random()}, 2000).start();
+                });
+
+            } else if (newState === 'TREE' && isScatter) {
+                isScatter = false;
+                animateParticlesTo(false);
+                // Contract photos
+                photoMeshes.forEach(p => {
+                    new TWEEN.Tween(p.mesh.position).to(p.treePos, 2000).easing(TWEEN.Easing.Cubic.Out).start();
+                    new TWEEN.Tween(p.mesh.rotation).to({x: 0, y: 0, z: 0}, 2000).start();
+                });
+            }
+        }
+
+        function animateParticlesTo(toScatter) {
+            particles.forEach(p => {
+                const target = toScatter ? p.scatterPos : p.treePos;
+                // We use Tween on the object wrapper
+                new TWEEN.Tween(p.currentPos)
+                    .to({x: target.x, y: target.y, z: target.z}, 1500 + Math.random() * 1000)
+                    .easing(TWEEN.Easing.Quint.Out)
+                    .onUpdate(() => {
+                        // Mark for update in render loop? 
+                        // To optimize, we update matrix in the loop directly reading currentPos
+                    })
+                    .start();
+            });
+        }
+
+        // --- Photo Wall Logic ---
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const texture = new THREE.Texture(img);
+                    texture.needsUpdate = true;
+                    texture.colorSpace = THREE.SRGBColorSpace;
+
+                    const aspect = img.width / img.height;
+                    const h = 3;
+                    const w = h * aspect;
+
+                    const geometry = new THREE.PlaneGeometry(w, h);
+                    const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    
+                    // Gold Border
+                    const borderGeo = new THREE.PlaneGeometry(w + 0.2, h + 0.2);
+                    const borderMat = new THREE.MeshStandardMaterial({ color: 0xFFD700, metalness: 1, roughness: 0.3 });
+                    const border = new THREE.Mesh(borderGeo, borderMat);
+                    border.position.z = -0.01;
+                    mesh.add(border);
+
+                    scene.add(mesh);
+
+                    // Positions
+                    const treePos = new THREE.Vector3(0, 8 + photoMeshes.length * 4, 0); // Stack on top
+                    const scatterPos = new THREE.Vector3(
+                        (Math.random() - 0.5) * 30,
+                        (Math.random() - 0.5) * 30,
+                        (Math.random() - 0.5) * 10 + 10
+                    );
+
+                    mesh.position.copy(isScatter ? scatterPos : treePos);
+                    mesh.lookAt(camera.position);
+
+                    photoMeshes.push({ mesh, treePos, scatterPos });
+                };
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // --- MediaPipe Logic ---
+        async function setupMediaPipe() {
+            videoElement = document.getElementById("webcam");
+            canvasElement = document.getElementById("output_canvas");
+            canvasCtx = canvasElement.getContext("2d");
+
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+            );
+            
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 1
+            });
+
+            // Start Camera
+            const constraints = { video: true };
+            navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+                videoElement.srcObject = stream;
+                videoElement.addEventListener("loadeddata", predictWebcam);
+            });
+        }
+
+        let lastVideoTime = -1;
+        async function predictWebcam() {
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            let nowInMs = Date.now();
+            
+            if (videoElement.currentTime !== lastVideoTime) {
+                lastVideoTime = videoElement.currentTime;
+                if (handLandmarker) {
+                    const results = handLandmarker.detectForVideo(videoElement, nowInMs);
+                    
+                    canvasCtx.save();
+                    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                    
+                    if (results.landmarks && results.landmarks.length > 0) {
+                        const landmarks = results.landmarks[0];
+                        drawHandOverlay(landmarks);
+                        handleGestures(landmarks);
+                    }
+                    canvasCtx.restore();
+                }
+            }
+            window.requestAnimationFrame(predictWebcam);
+        }
+
+        function drawHandOverlay(landmarks) {
+            // Simple debug drawing
+            canvasCtx.fillStyle = "#FFD700";
+            for (const point of landmarks) {
+                canvasCtx.beginPath();
+                canvasCtx.arc(point.x * canvasElement.width, point.y * canvasElement.height, 4, 0, 2 * Math.PI);
+                canvasCtx.fill();
+            }
+        }
+
+        function handleGestures(landmarks) {
+            // 1. Detect Open/Closed Hand
+            // Finger Tips: 4, 8, 12, 16, 20. Finger PIP (lower joint): 2, 6, 10, 14, 18
+            const tips = [8, 12, 16, 20];
+            const pips = [6, 10, 14, 18];
+            let extendedFingers = 0;
+            
+            // Check fingers (excluding thumb)
+            for (let i = 0; i < 4; i++) {
+                // Note: y is normalized 0-1 (top to bottom). Tip y < Pip y means extended upwards
+                if (landmarks[tips[i]].y < landmarks[pips[i]].y) {
+                    extendedFingers++;
+                }
+            }
+
+            // Simple Logic: 0-1 fingers = Fist, 3-4 fingers = Open
+            if (extendedFingers <= 1) {
+                switchState('TREE');
+            } else if (extendedFingers >= 3) {
+                switchState('SCATTER');
+            }
+
+            // 2. Pinch (Thumb tip 4 and Index tip 8)
+            const dx = landmarks[4].x - landmarks[8].x;
+            const dy = landmarks[4].y - landmarks[8].y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            if (dist < 0.05) {
+                if (!isZoomed) {
+                    isZoomed = true;
+                    new TWEEN.Tween(camera.position).to({ z: 10 }, 1000).start();
+                }
+            } else {
+                if (isZoomed) {
+                    isZoomed = false;
+                    new TWEEN.Tween(camera.position).to({ z: CONFIG.cameraZ }, 1000).start();
+                }
+            }
+
+            // 3. Movement (Palm center)
+            if (isScatter) {
+                const cx = landmarks[9].x; // Middle finger knuckle
+                // Map 0-1 to rotation speed
+                const rotSpeed = (cx - 0.5) * 2; // -1 to 1
+                scene.rotation.y -= rotSpeed * 0.05;
+            }
+        }
+
+        // --- Main Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const dt = 0.016;
+            time += dt;
+            TWEEN.update();
+
+            // Update Instanced Mesh
+            if (currentState === 'MAIN' && instancedMesh) {
+                let needsUpdate = false;
+                
+                // Only update if tweening implies movement, but for simplicity we update always
+                // (Optimization: use a dirty flag if not tweening)
+                for (let i = 0; i < CONFIG.particleCount; i++) {
+                    const p = particles[i];
+                    dummy.position.copy(p.currentPos);
+                    
+                    // Add subtle float
+                    dummy.position.y += Math.sin(time + p.id) * 0.01;
+                    
+                    dummy.rotation.x = time * 0.2 + p.id;
+                    dummy.rotation.y = time * 0.1;
+                    
+                    dummy.updateMatrix();
+                    instancedMesh.setMatrixAt(i, dummy.matrix);
+                }
+                instancedMesh.instanceMatrix.needsUpdate = true;
+
+                // Animate Gold Dust
+                if (goldDustSystem) {
+                    goldDustSystem.rotation.y = time * 0.05;
+                    const positions = goldDustSystem.geometry.attributes.position.array;
+                    for(let i=1; i<positions.length; i+=3) {
+                        positions[i] -= 0.02; // Fall down
+                        if (positions[i] < -20) positions[i] = 20; // Reset
+                    }
+                    goldDustSystem.geometry.attributes.position.needsUpdate = true;
+                }
+            }
+
+            // Controls update
+            if (controls) controls.update();
+
+            // Render
+            if (composer) {
+                composer.render();
+            } else {
+                renderer.render(scene, camera);
+            }
+        }
+
+        // --- Utilities ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+        
+        // Start
+        init();
+
+    </script>
 </body>
 </html>
