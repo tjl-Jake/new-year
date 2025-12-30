@@ -219,3 +219,588 @@
             rotationSpeed: 0.001,
             targetRotationY: 0
         };
+// --- Three.js Globals ---
+        let scene, camera, renderer, composer;
+        let font;
+        let introParticles; // System for Countdown
+        let instancedMeshes = []; // Array of InstancedMesh
+        let photoMeshes = []; // User uploaded photos
+        let goldParticles; // Ambient floating dust
+        
+        // Data storage for instances (position management)
+        // Structure: { meshIndex: i, targetPos: Vector3, currentPos: Vector3, treePos: Vector3, scatterPos: Vector3 }
+        let instanceData = []; 
+
+        // --- Initialization ---
+        async function init() {
+            // 1. Scene Setup
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            // Transparent background to show CSS gradient
+            scene.background = null; 
+            // Fog for depth
+            scene.fog = new THREE.FogExp2(0xfff0f5, 0.002);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 80);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.toneMapping = THREE.ReinhardToneMapping;
+            container.appendChild(renderer.domElement);
+
+            // 2. Post Processing (Bloom)
+            const renderScene = new RenderPass(scene, camera);
+            const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+            bloomPass.threshold = CONFIG.bloomThreshold;
+            bloomPass.strength = CONFIG.bloomStrength;
+            bloomPass.radius = CONFIG.bloomRadius;
+
+            composer = new EffectComposer(renderer);
+            composer.addPass(renderScene);
+            composer.addPass(bloomPass);
+
+            // 3. Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(10, 20, 10);
+            scene.add(dirLight);
+            const pointLight = new THREE.PointLight(0xff6b95, 2, 50);
+            pointLight.position.set(0, 5, 0);
+            scene.add(pointLight);
+
+            // 4. Load Assets & Setup
+            await loadFont();
+            await setupMediaPipe();
+            
+            // Show Start Button
+            document.querySelector('.loader').style.display = 'none';
+            document.querySelector('#loading-screen p').innerText = "资源加载完毕";
+            const startBtn = document.getElementById('start-btn');
+            startBtn.style.display = 'block';
+            startBtn.addEventListener('click', startIntro);
+            
+            window.addEventListener('resize', onWindowResize);
+            setupUI();
+        }
+
+        // --- Asset Loading ---
+        function loadFont() {
+            return new Promise(resolve => {
+                const loader = new FontLoader();
+                // Using a standard font from three.js examples
+                loader.load('https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json', (loadedFont) => {
+                    font = loadedFont;
+                    resolve();
+                });
+            });
+        }
+
+        // --- Intro Sequence (Countdown) ---
+        function createTextParticles(text) {
+            if (introParticles) scene.remove(introParticles);
+
+            const geometry = new TextGeometry(text, {
+                font: font,
+                size: 15,
+                height: 2,
+                curveSegments: 4,
+                bevelEnabled: true,
+                bevelThickness: 1,
+                bevelSize: 0.5,
+                bevelSegments: 2
+            });
+
+            geometry.center();
+            
+            // Convert geometry vertices to particles
+            // Note: TextGeometry produces a Mesh, we sample points from it
+            // Or simpler: just use vertices (works for older three.js, newer needs explicit attribute access)
+            // Ideally: Sample points on surface
+            
+            // Fast approach: Use points directly from geometry attributes
+            const count = geometry.attributes.position.count;
+            const particlesGeo = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            
+            // Simply copy positions, maybe add some jitter
+            for(let i=0; i<count*3; i++) {
+                positions[i] = geometry.attributes.position.array[i];
+            }
+            
+            particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const material = new THREE.PointsMaterial({
+                color: 0xff6b95,
+                size: 0.5,
+                sizeAttenuation: true,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending
+            });
+
+            introParticles = new THREE.Points(particlesGeo, material);
+            scene.add(introParticles);
+            
+            // Pop effect
+            introParticles.scale.set(0,0,0);
+            new TWEEN.Tween(introParticles.scale)
+                .to({x:1, y:1, z:1}, 500)
+                .easing(TWEEN.Easing.Elastic.Out)
+                .start();
+        }
+
+        function startIntro() {
+            const screen = document.getElementById('loading-screen');
+            screen.style.opacity = 0;
+            setTimeout(() => screen.remove(), 1000);
+
+            // Play Music if uploaded, otherwise silent
+            const audio = document.getElementById('bgm-player');
+            if (audio.src) audio.play().catch(e => console.log("Audio needs interaction"));
+
+            const sequence = ["5", "4", "3", "2", "1", "2026"];
+            let step = 0;
+
+            function nextStep() {
+                if (step >= sequence.length) {
+                    finishIntro();
+                    return;
+                }
+                createTextParticles(sequence[step]);
+                step++;
+                setTimeout(nextStep, 1000); // 1 second per number
+            }
+            nextStep();
+        }
+
+        function finishIntro() {
+            // Warp Speed Effect
+            new TWEEN.Tween(introParticles.position)
+                .to({z: 100}, 500)
+                .easing(TWEEN.Easing.Exponential.In)
+                .onComplete(() => {
+                    scene.remove(introParticles);
+                    initMainScene();
+                })
+                .start();
+        }
+
+        // --- Main Scene Logic (The Cake / Nebula) ---
+        function initMainScene() {
+            STATE.mode = 'tree';
+            
+            // 1. Create Instanced Meshes (4 types)
+            const geos = [
+                new THREE.SphereGeometry(0.3, 16, 16), // Pink Sphere
+                new THREE.CylinderGeometry(0.1, 0.1, 0.8, 8), // Blue Column
+                new THREE.IcosahedronGeometry(0.3, 0), // Ruby
+                new THREE.ConeGeometry(0.2, 0.6, 8) // Emerald
+            ];
+
+            const mats = [
+                new THREE.MeshStandardMaterial({ color: CONFIG.colors[0], roughness: 0.4, metalness: 0.1 }),
+                new THREE.MeshStandardMaterial({ color: CONFIG.colors[1], roughness: 0.2, metalness: 0.8 }),
+                new THREE.MeshPhysicalMaterial({ color: CONFIG.colors[2], transmission: 0.6, opacity: 1, roughness: 0, metalness: 0, ior: 1.5 }), // Glassy
+                new THREE.MeshPhysicalMaterial({ color: CONFIG.colors[3], transmission: 0.4, opacity: 1, roughness: 0.1, metalness: 0.2 })
+            ];
+
+            // Create InstancedMeshes
+            geos.forEach((geo, i) => {
+                const mesh = new THREE.InstancedMesh(geo, mats[i], CONFIG.count / 4);
+                mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                scene.add(mesh);
+                instancedMeshes.push(mesh);
+            });
+
+            // 2. Calculate Positions
+            const total = CONFIG.count;
+            const dummy = new THREE.Object3D();
+
+            let indexPerMesh = [0, 0, 0, 0];
+
+            for (let i = 0; i < total; i++) {
+                const type = i % 4;
+                const mesh = instancedMeshes[type];
+                const idx = indexPerMesh[type];
+
+                // Tree Position (Cone/Cake shape)
+                // Layers: Bottom wide, top narrow
+                const layer = Math.random(); // 0 to 1 (0 is bottom)
+                const height = (layer * 30) - 15;
+                const radius = (1 - layer) * 15 + 2; // Tapering
+                const angle = Math.random() * Math.PI * 2;
+                
+                const tx = Math.cos(angle) * radius * (0.8 + Math.random()*0.4);
+                const tz = Math.sin(angle) * radius * (0.8 + Math.random()*0.4);
+                const ty = height;
+
+                const treePos = new THREE.Vector3(tx, ty, tz);
+
+                // Scatter Position (Sphere/Nebula)
+                const phi = Math.acos(-1 + (2 * Math.random()));
+                const theta = Math.sqrt(total * Math.PI) * phi;
+                const r = 35 * Math.cbrt(Math.random()); // Uniform sphere
+                
+                const sx = r * Math.sin(phi) * Math.cos(theta);
+                const sy = r * Math.sin(phi) * Math.sin(theta);
+                const sz = r * Math.cos(phi);
+                
+                const scatterPos = new THREE.Vector3(sx, sy, sz);
+
+                // Init at Scatter (fly in effect) or Start at Tree
+                // Let's start scattered and aggregate
+                const currentPos = scatterPos.clone().multiplyScalar(2); // Start far away
+
+                instanceData.push({
+                    type: type,
+                    index: idx,
+                    currentPos: currentPos,
+                    targetPos: treePos, // Start goal: Tree
+                    treePos: treePos,
+                    scatterPos: scatterPos,
+                    velocity: new THREE.Vector3(0,0,0)
+                });
+
+                indexPerMesh[type]++;
+            }
+
+            // 3. Gold Particles (Snow)
+            const pGeo = new THREE.BufferGeometry();
+            const pPos = [];
+            for(let k=0; k<1000; k++) {
+                pPos.push((Math.random()-0.5)*60, (Math.random()-0.5)*60, (Math.random()-0.5)*60);
+            }
+            pGeo.setAttribute('position', new THREE.Float32BufferAttribute(pPos, 3));
+            const pMat = new THREE.PointsMaterial({color: 0xffd700, size: 0.2, transparent: true, opacity: 0.6});
+            goldParticles = new THREE.Points(pGeo, pMat);
+            scene.add(goldParticles);
+
+            animate();
+        }
+
+        // --- Interaction Logic (State Switch) ---
+        function switchState(newState) {
+            if (STATE.mode === newState) return;
+            STATE.mode = newState;
+            
+            instanceData.forEach(data => {
+                if (newState === 'tree') {
+                    data.targetPos = data.treePos;
+                } else if (newState === 'scatter') {
+                    data.targetPos = data.scatterPos;
+                }
+            });
+
+            // Update Photos
+            photoMeshes.forEach(pm => {
+                pm.targetPos = (newState === 'tree') ? pm.treePos : pm.scatterPos;
+            });
+        }
+
+        function handleZoom(doZoom) {
+            if (STATE.isZoomed === doZoom) return;
+            STATE.isZoomed = doZoom;
+            
+            const targetZ = doZoom ? 20 : 80;
+            new TWEEN.Tween(camera.position)
+                .to({ z: targetZ }, 1000)
+                .easing(TWEEN.Easing.Quadratic.Out)
+                .start();
+        }
+
+        // --- Animation Loop ---
+        const dummy = new THREE.Object3D();
+        const tempVec = new THREE.Vector3();
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            TWEEN.update(time);
+
+            // Update Instances
+            // Using simple lerp for performance instead of physics
+            const lerpSpeed = 0.05;
+
+            // Group processing by mesh to minimize matrix updates
+            // Reset counts for matrix updates
+            // Actually, we must update all matrices every frame if they are moving
+            
+            for(let i=0; i<instanceData.length; i++) {
+                const d = instanceData[i];
+                
+                // Lerp Position
+                d.currentPos.lerp(d.targetPos, lerpSpeed);
+                
+                // Add some floating noise
+                const noise = Math.sin(time * 0.001 + d.index) * 0.05;
+                
+                dummy.position.copy(d.currentPos);
+                dummy.position.y += noise;
+                
+                // Rotate individual gems slightly
+                dummy.rotation.x += 0.01;
+                dummy.rotation.y += 0.01;
+                
+                dummy.updateMatrix();
+                instancedMeshes[d.type].setMatrixAt(d.index, dummy.matrix);
+            }
+
+            instancedMeshes.forEach(mesh => mesh.instanceMatrix.needsUpdate = true);
+
+            // Update Photos
+            photoMeshes.forEach(pm => {
+                pm.mesh.position.lerp(pm.targetPos, lerpSpeed);
+                pm.mesh.lookAt(camera.position); // Photos always face camera
+            });
+
+            // Global Rotation (controlled by hand or auto)
+            if (STATE.mode === 'scatter') {
+                const rSpeed = STATE.handDetected ? STATE.rotationSpeed * 5 : 0.0005;
+                scene.rotation.y += rSpeed;
+            } else {
+                // Slowly return to 0 or rotate slowly
+                scene.rotation.y += 0.0005;
+            }
+
+            // Gold Particles Floating
+            if(goldParticles) {
+                goldParticles.rotation.y -= 0.001;
+            }
+
+            composer.render();
+        }
+
+
+        // --- MediaPipe Hand Tracking ---
+        let vision, handLandmarker;
+
+        async function setupMediaPipe() {
+            vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+            );
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO",
+                numHands: 1
+            });
+            startWebcam();
+        }
+
+        function startWebcam() {
+            const video = document.getElementById("webcam");
+            const canvas = document.getElementById("output_canvas");
+            const canvasCtx = canvas.getContext("2d");
+
+            navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+                video.srcObject = stream;
+                video.addEventListener("loadeddata", predictWebcam);
+            }).catch(err => {
+                console.warn("Camera access denied or failed", err);
+                document.querySelector('.guide-box').innerHTML += "<div style='color:red'>摄像头无法启动</div>";
+            });
+
+            let lastVideoTime = -1;
+            
+            function predictWebcam() {
+                // Ensure canvas matches video size
+                if(video.videoWidth) {
+                   canvas.width = video.videoWidth;
+                   canvas.height = video.videoHeight;
+                }
+
+                let startTimeMs = performance.now();
+                if (lastVideoTime !== video.currentTime) {
+                    lastVideoTime = video.currentTime;
+                    const results = handLandmarker.detectForVideo(video, startTimeMs);
+
+                    canvasCtx.save();
+                    canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    if (results.landmarks && results.landmarks.length > 0) {
+                        STATE.handDetected = true;
+                        const landmarks = results.landmarks[0];
+                        drawHand(canvasCtx, landmarks);
+                        analyzeGesture(landmarks);
+                    } else {
+                        STATE.handDetected = false;
+                    }
+                    canvasCtx.restore();
+                }
+                window.requestAnimationFrame(predictWebcam);
+            }
+        }
+
+        function drawHand(ctx, landmarks) {
+            ctx.fillStyle = "#ff6b95";
+            ctx.strokeStyle = "#87ceeb";
+            ctx.lineWidth = 2;
+            
+            // Simple drawing loop
+            landmarks.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x * ctx.canvas.width, p.y * ctx.canvas.height, 3, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        }
+
+        function analyzeGesture(lm) {
+            // Logic for gestures
+            // 0: Wrist, 4: ThumbTip, 8: IndexTip, 12: MiddleTip, 16: RingTip, 20: PinkyTip
+            
+            const wrist = lm[0];
+            const thumbTip = lm[4];
+            const indexTip = lm[8];
+            const middleTip = lm[12];
+            const ringTip = lm[16];
+            const pinkyTip = lm[20];
+
+            // 1. Pinch Check (Thumb and Index close)
+            const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+            if (pinchDist < 0.05) {
+                handleZoom(true);
+                return; // Priority
+            } else {
+                handleZoom(false);
+            }
+
+            // 2. Fist vs Open Palm Check
+            // Check if fingertips are close to wrist (simple heuristic)
+            // Average distance of tips to wrist
+            const tips = [indexTip, middleTip, ringTip, pinkyTip];
+            let avgDist = 0;
+            tips.forEach(tip => {
+                avgDist += Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+            });
+            avgDist /= 4;
+
+            // Thresholds need tuning based on camera distance, usually normalized coords help
+            // In normalized (0-1), a fist usually has tips < 0.3 distance to wrist
+            // Open palm usually > 0.4
+            
+            if (avgDist < 0.25) {
+                switchState('tree'); // Fist
+            } else if (avgDist > 0.4) {
+                switchState('scatter'); // Open
+            }
+
+            // 3. Movement (X-axis) for Rotation
+            // Map hand X position (0-1) to rotation speed direction
+            if (STATE.mode === 'scatter') {
+                const handX = wrist.x; // 0 (left) to 1 (right)
+                // Center is 0.5. < 0.4 rotate left, > 0.6 rotate right
+                if (handX < 0.4) STATE.rotationSpeed = -0.01;
+                else if (handX > 0.6) STATE.rotationSpeed = 0.01;
+                else STATE.rotationSpeed = 0;
+            }
+        }
+
+        // --- Photo Wall Logic ---
+        function setupUI() {
+            // Photo Upload
+            const imgInput = document.getElementById('img-input');
+            imgInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                if(!files.length) return;
+
+                Array.from(files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        createPhotoMesh(evt.target.result);
+                    };
+                    reader.readAsDataURL(file);
+                });
+            });
+
+            // Audio Upload
+            const bgmInput = document.getElementById('bgm-input');
+            const audioPlayer = document.getElementById('bgm-player');
+            bgmInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if(file) {
+                    const url = URL.createObjectURL(file);
+                    audioPlayer.src = url;
+                    audioPlayer.play();
+                }
+            });
+
+            // Buttons
+            document.getElementById('play-pause-btn').addEventListener('click', () => {
+                if (audioPlayer.paused) audioPlayer.play();
+                else audioPlayer.pause();
+            });
+
+            document.getElementById('fullscreen-btn').addEventListener('click', () => {
+                if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+                else document.exitFullscreen();
+            });
+        }
+
+        function createPhotoMesh(imgUrl) {
+            const textureLoader = new THREE.TextureLoader();
+            textureLoader.load(imgUrl, (tex) => {
+                // Aspect Ratio
+                const aspect = tex.image.width / tex.image.height;
+                const width = 4; 
+                const height = width / aspect;
+
+                const geo = new THREE.PlaneGeometry(width, height);
+                // Pink border using a second slightly larger mesh behind, or shader.
+                // Simple way: MeshBasic with map
+                const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+                const mesh = new THREE.Mesh(geo, mat);
+
+                // Add Border
+                const borderGeo = new THREE.PlaneGeometry(width + 0.2, height + 0.2);
+                const borderMat = new THREE.MeshBasicMaterial({ color: 0xffc0cb });
+                const border = new THREE.Mesh(borderGeo, borderMat);
+                border.position.z = -0.01;
+                mesh.add(border);
+
+                scene.add(mesh);
+
+                // Calculate Positions
+                // Tree: Float around the cake
+                const theta = Math.random() * Math.PI * 2;
+                const r = 20;
+                const treePos = new THREE.Vector3(Math.cos(theta)*r, (Math.random()*20)-5, Math.sin(theta)*r);
+
+                // Scatter: Random far
+                const scatterPos = new THREE.Vector3((Math.random()-0.5)*80, (Math.random()-0.5)*80, (Math.random()-0.5)*80);
+
+                // Init
+                const pm = {
+                    mesh: mesh,
+                    treePos: treePos,
+                    scatterPos: scatterPos,
+                    targetPos: (STATE.mode === 'tree') ? treePos : scatterPos
+                };
+                
+                // Set initial pos
+                mesh.position.copy(pm.targetPos);
+                // Animation effect: scale up
+                mesh.scale.set(0,0,0);
+                new TWEEN.Tween(mesh.scale).to({x:1, y:1, z:1}, 600).easing(TWEEN.Easing.Back.Out).start();
+
+                photoMeshes.push(pm);
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+</html>
