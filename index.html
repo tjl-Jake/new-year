@@ -312,27 +312,29 @@
 
         function zoomPhoto(pm) {
             STATE.focusedPhoto = pm;
-            pm.isFocused = true; // 标记不参与常规动画
+            pm.isFocused = true; 
             
-            // 计算相机前方的点
-            const dir = new THREE.Vector3();
-            camera.getWorldDirection(dir);
-            const targetPos = camera.position.clone().add(dir.multiplyScalar(15)); // 距离相机15单位
+            // === 修改点 1：设定一个固定的舞台中心位置 ===
+            // 相机在 z=80，中心在 z=0。把照片放在 z=45 的位置，既突出又不会太近。
+            const targetPos = new THREE.Vector3(0, 5, 45);
 
-            // 动画移动
+            // 动画移动到舞台中心
             new TWEEN.Tween(pm.mesh.position).to(targetPos, 1000).easing(TWEEN.Easing.Exponential.Out).start();
             
-            // 动画旋转 (面向相机)
-            const targetQuat = camera.quaternion.clone();
-            new TWEEN.Tween(pm.mesh.quaternion).to(targetQuat, 1000).easing(TWEEN.Easing.Exponential.Out).start();
+            // === 修改点 2：强制让照片正对相机 ===
+            // 计算面向相机的旋转角度
+            const dummy = new THREE.Object3D();
+            dummy.position.copy(targetPos);
+            dummy.lookAt(camera.position);
+            new TWEEN.Tween(pm.mesh.quaternion).to(dummy.quaternion, 1000).easing(TWEEN.Easing.Exponential.Out).start();
 
-            // 动画缩放 (稍微放大)
-            new TWEEN.Tween(pm.mesh.scale).to({x: 1.5, y: 1.5, z: 1.5}, 1000).start();
+            // === 修改点 3：加大缩放倍数 (比如放大到 3 倍) ===
+            new TWEEN.Tween(pm.mesh.scale).to({x: 3, y: 3, z: 3}, 1000).start();
 
             // 隐藏 UI 防止干扰
             document.querySelector('.control-panel').style.opacity = '0';
+            document.querySelector('.ai-panel').style.opacity = '0'; // 把右下角也隐藏掉
         }
-
         function unzoomPhoto() {
             if (!STATE.focusedPhoto) return;
             const pm = STATE.focusedPhoto;
@@ -471,8 +473,16 @@
             if (instanceData.length === 0) { composer.render(); return; }
 
             const dummy = new THREE.Object3D(), lerpSpeed = 0.05;
+            const backgroundPushZ = STATE.focusedPhoto ? -60 : 0;
+
             for(let i=0; i<instanceData.length; i++) {
-                const d = instanceData[i]; d.currentPos.lerp(d.targetPos, lerpSpeed);
+                const d = instanceData[i];
+                
+                // [修改点] 目标位置要加上偏移量
+                let finalTarget = d.targetPos.clone();
+                finalTarget.z += backgroundPushZ;
+                
+                d.currentPos.lerp(finalTarget, lerpSpeed);
                 const noise = Math.sin(time * 0.001 + d.index) * 0.05;
                 dummy.position.copy(d.currentPos); dummy.position.y += noise;
                 dummy.rotation.x += 0.01; dummy.rotation.y += 0.01; dummy.updateMatrix();
@@ -638,7 +648,12 @@ function setupUI() {
                 const aspect = tex.image.width / tex.image.height;
                 const width = 4; const height = width / aspect;
                 const geo = new THREE.PlaneGeometry(width, height);
-                const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+                const mat = new THREE.MeshStandardMaterial({ 
+                    map: tex, 
+                    side: THREE.DoubleSide,
+                    roughness: 0.8, 
+                    metalness: 0.1
+                });
                 const mesh = new THREE.Mesh(geo, mat);
                 const border = new THREE.Mesh(new THREE.PlaneGeometry(width + 0.2, height + 0.2), new THREE.MeshBasicMaterial({ color: 0xffc0cb }));
                 border.position.z = -0.01; mesh.add(border);
