@@ -42,8 +42,14 @@
             max-height: 500px; opacity: 1;
         }
         /* 折叠状态 */
-        .minimized .panel-content { max-height: 0; opacity: 0; padding: 0 15px; }
-
+        .minimized .panel-content { 
+            max-height: 0 !important;       /* 强制高度归零 */
+            opacity: 0 !important;          /* 强制内容透明 */
+            padding-top: 0 !important;      /* 强制去掉上边距 */
+            padding-bottom: 0 !important;   /* 强制去掉下边距 */
+            margin: 0 !important;           /* 确保没有外边距 */
+            pointer-events: none;           /* 禁止点击隐藏的按钮 */
+        }
         /* 左上角面板 */
         .control-panel { max-width: 250px; width: 100%; }
         .panel-content.scrollable { overflow-y: auto; max-height: 50vh; }
