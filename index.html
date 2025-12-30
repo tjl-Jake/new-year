@@ -176,7 +176,7 @@
         <div class="ai-panel pointer-events-auto">
             <div class="guide-box">
                 <div style="font-weight: bold; margin-bottom: 5px; color:#ff6b95">AI 手势魔法</div>
-                <div class="guide-item">聚合 (大树) <span class="icon">✊</span></div>
+                <div class="guide-item">聚合 (爱心) <span class="icon">✊</span></div>
                 <div class="guide-item">变身 (萌宠) <span class="icon">🖐</span></div>
                 <div class="guide-item">缩放 (Zoom) <span class="icon">👌</span></div>
                 <div class="guide-item">旋转场景 <span class="icon">👋</span></div>
@@ -202,13 +202,13 @@
         import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
         import TWEEN from '@tweenjs/tween.js';
 
-        // --- 1. 配置修改：柔和配色与降低辉光 ---
+        // --- 1. 配置修改 ---
         const CONFIG = {
-            count: 1500, // 降低数量，减少杂乱
-            colors: [0xffc0cb, 0x87ceeb, 0xff69b4, 0x98fb98], // 糖果色：粉、天蓝、热粉、嫩绿
-            bloomStrength: 0.6, // 降低强度，不刺眼
+            count: 1500, 
+            colors: [0xffc0cb, 0x87ceeb, 0xff69b4, 0x98fb98], 
+            bloomStrength: 0.6,
             bloomRadius: 0.4,
-            bloomThreshold: 0.4 // 提高阈值，让辉光更克制
+            bloomThreshold: 0.4 
         };
 
         const STATE = {
@@ -315,7 +315,7 @@
             });
         }
 
-        // --- 2. 开场修改：淡蓝色清晰粒子 ---
+        // --- 2. 倒计时升级：深蓝、加大 ---
         function createTextParticles(text) {
             if (!font) return; 
 
@@ -344,13 +344,13 @@
             
             particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             
-            // 修改：淡蓝色，高透明度，稍微大一点
+            // 修改：颜色加深为 DeepSkyBlue，Size 加大
             const material = new THREE.PointsMaterial({
-                color: 0x87CEFA, // LightSkyBlue
-                size: 0.6,
+                color: 0x00BFFF, // DeepSkyBlue，比之前更深，对比度更高
+                size: 0.8,       // 粒子变大，文字更粗
                 sizeAttenuation: true,
                 transparent: true,
-                opacity: 0.9,
+                opacity: 1.0,    // 不透明
                 blending: THREE.AdditiveBlending
             });
 
@@ -407,16 +407,15 @@
             }
         }
 
-        // --- 3. 核心场景：形状与算法更新 ---
+        // --- 3. 核心场景：新算法 (爱心 & 羊头) ---
         function initMainScene() {
             STATE.mode = 'tree';
             
-            // 修改：使用圆润可爱的几何体
             const geos = [
-                new THREE.SphereGeometry(0.4, 16, 16), // 球体
-                new THREE.IcosahedronGeometry(0.4, 0), // 宝石
-                new THREE.SphereGeometry(0.25, 16, 16), // 小气泡
-                new THREE.OctahedronGeometry(0.3, 0)   // 糖果
+                new THREE.SphereGeometry(0.4, 16, 16), 
+                new THREE.IcosahedronGeometry(0.4, 0), 
+                new THREE.SphereGeometry(0.25, 16, 16), 
+                new THREE.OctahedronGeometry(0.3, 0)   
             ];
 
             const mats = [
@@ -433,19 +432,27 @@
                 instancedMeshes.push(mesh);
             });
 
-            // 算法函数定义
+            // --- 升级后的形状算法 ---
             
-            // 树形：螺旋圆锥
-            function getTreePos(i, total) {
-                const layer = Math.random(); 
-                const height = (layer * 35) - 17; 
-                const radius = (1 - layer) * 12 + 1; 
-                const angle = Math.random() * Math.PI * 2;
-                const r = Math.random() * radius; 
-                return new THREE.Vector3(Math.cos(angle) * r, height, Math.sin(angle) * r);
+            // 1. 爱心形态 (Heart 3D) - 替换原来的树
+            function getHeartPos(i, total) {
+                // 使用心脏线公式
+                const t = Math.random() * Math.PI * 2; // 角度
+                const s = Math.cbrt(Math.random()); // 半径填充因子（使用立方根让内部不空心）
+                
+                // 基本心形曲线
+                const hx = 16 * Math.pow(Math.sin(t), 3);
+                const hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                
+                // 3D 填充：增加 Z 轴厚度
+                const hz = (Math.random() - 0.5) * 8 * s; // 厚度
+
+                const scale = 0.8 * s; // 整体缩放
+                
+                return new THREE.Vector3(hx * scale, hy * scale + 5, hz); // y+5 稍微抬高
             }
 
-            // 兔子：圆头 + 长耳
+            // 2. 兔子 (保持不变)
             function getRabbitPos(i, total) {
                 const rand = Math.random();
                 let pos = new THREE.Vector3();
@@ -467,21 +474,39 @@
                 return pos;
             }
 
-            // 小羊：云朵身体 + 小头
-function getSheepPos(i, total) {
+            // 3. 羊头 (Cute Sheep Head) - 替换原来的云
+            function getSheepHeadPos(i, total) {
                 const rand = Math.random();
                 let pos = new THREE.Vector3();
-                if (rand < 0.8) {
-                    const r = 11 * Math.cbrt(Math.random());
+
+                // 比例分配：脸50%，头顶毛30%，耳朵20%
+                if (rand < 0.5) {
+                    // 脸：横向椭圆
+                    const r = 7 * Math.cbrt(Math.random());
                     const phi = Math.acos(-1 + 2 * Math.random());
                     const theta = Math.random() * Math.PI * 2;
-                    pos.set(r * Math.sin(phi) * Math.cos(theta) * 1.5, r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi)); 
-                } else {
-                    const r = 4.5 * Math.cbrt(Math.random());
+                    // X拉宽做脸
+                    pos.set(r * Math.sin(phi) * Math.cos(theta) * 1.3, r * Math.sin(phi) * Math.sin(theta) * 0.9, r * Math.cos(phi) * 0.9);
+                } else if (rand < 0.8) {
+                    // 头顶卷毛：在脸上方的一个半球
+                    const r = 5 * Math.cbrt(Math.random());
                     const phi = Math.acos(-1 + 2 * Math.random());
                     const theta = Math.random() * Math.PI * 2;
                     pos.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
-                    pos.x += 12; pos.y += 2;
+                    pos.y += 4; // 移到头顶
+                } else {
+                    // 耳朵：两侧耷拉的椭圆
+                    const isLeft = rand < 0.9 ? -1 : 1;
+                    const r = 2.5 * Math.cbrt(Math.random());
+                    const phi = Math.acos(-1 + 2 * Math.random());
+                    const theta = Math.random() * Math.PI * 2;
+                    
+                    let ex = r * Math.sin(phi) * Math.cos(theta);
+                    let ey = r * Math.sin(phi) * Math.sin(theta) * 2; // 拉长
+                    let ez = r * Math.cos(phi);
+                    
+                    // 旋转耳朵稍微向外
+                    pos.set(ex + (isLeft * 9), ey + 1, ez);
                 }
                 return pos;
             }
@@ -494,9 +519,10 @@ function getSheepPos(i, total) {
                 const type = i % 4;
                 const idx = indexPerMesh[type];
 
-                const treePos = getTreePos(i, total);
+                // 使用新公式
+                const treePos = getHeartPos(i, total); // 变量名保持 treePos 以兼容，但内容是爱心
                 const rabbitPos = getRabbitPos(i, total);
-                const sheepPos = getSheepPos(i, total);
+                const sheepPos = getSheepHeadPos(i, total); // 新羊头
                 
                 // 默认从散开状态飞入
                 const currentPos = new THREE.Vector3((Math.random()-0.5)*100, (Math.random()-0.5)*100, (Math.random()-0.5)*100);
@@ -505,7 +531,7 @@ function getSheepPos(i, total) {
                     type: type,
                     index: idx,
                     currentPos: currentPos,
-                    targetPos: treePos, // 默认变树
+                    targetPos: treePos, // 默认变爱心
                     treePos: treePos,
                     rabbitPos: rabbitPos,
                     sheepPos: sheepPos,
@@ -526,11 +552,10 @@ function getSheepPos(i, total) {
             scene.add(goldParticles);
         }
 
-        // --- 4. 交互逻辑：随机萌宠 ---
+        // --- 4. 交互逻辑 ---
         function switchState(newState) {
             if (STATE.mode === newState) return;
             
-            // 散开时随机选择动物
             let animalType = 'rabbit';
             if (newState === 'scatter') {
                 animalType = Math.random() > 0.5 ? 'rabbit' : 'sheep';
@@ -540,7 +565,7 @@ function getSheepPos(i, total) {
             
             instanceData.forEach(data => {
                 if (newState === 'tree') {
-                    data.targetPos = data.treePos;
+                    data.targetPos = data.treePos; // 爱心
                 } else if (newState === 'scatter') {
                     data.targetPos = (animalType === 'rabbit') ? data.rabbitPos : data.sheepPos;
                 }
@@ -550,7 +575,6 @@ function getSheepPos(i, total) {
                 if (newState === 'tree') {
                     pm.targetPos = pm.treePos;
                 } else {
-                    // 照片不参与变身，飞到外围
                     pm.targetPos = pm.scatterPos; 
                 }
             });
@@ -617,7 +641,7 @@ function getSheepPos(i, total) {
         }
 
 
-        // --- MediaPipe Hand Tracking (保持不变) ---
+        // --- MediaPipe Hand Tracking ---
         let vision, handLandmarker;
 
         async function setupMediaPipe() {
@@ -686,7 +710,8 @@ function getSheepPos(i, total) {
                 window.requestAnimationFrame(predictWebcam);
             }
         }
-function drawHand(ctx, landmarks) {
+
+        function drawHand(ctx, landmarks) {
             ctx.fillStyle = "#ff6b95";
             ctx.strokeStyle = "#87ceeb";
             ctx.lineWidth = 2;
@@ -792,7 +817,7 @@ function drawHand(ctx, landmarks) {
                 scene.add(mesh);
 
                 const theta = Math.random() * Math.PI * 2;
-                const r = 25; // 照片稍微远一点，包围着动物
+                const r = 25; 
                 const treePos = new THREE.Vector3(Math.cos(theta)*r, (Math.random()*20)-5, Math.sin(theta)*r);
                 const scatterPos = new THREE.Vector3((Math.random()-0.5)*90, (Math.random()-0.5)*90, (Math.random()-0.5)*90);
 
