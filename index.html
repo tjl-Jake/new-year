@@ -201,6 +201,7 @@
         import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
         import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
         import TWEEN from '@tweenjs/tween.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js'; // 新增这一行
 
         // --- 1. 配置修改 ---
         const CONFIG = {
@@ -219,7 +220,7 @@
             targetRotationY: 0
         };
 
-        let scene, camera, renderer, composer;
+        let scene, camera, renderer, composer, controls;
         let font = null;
         let introParticles; 
         let instancedMeshes = []; 
@@ -244,6 +245,12 @@
                 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
                 renderer.toneMapping = THREE.ReinhardToneMapping;
                 container.appendChild(renderer.domElement);
+                controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true; // 开启阻尼滑动，更有感觉
+                controls.dampingFactor = 0.05;
+                controls.enablePan = false; // 禁止右键平移，防止视角跑偏
+                controls.minDistance = 10;  // 最近缩放距离
+                controls.maxDistance = 150; // 最远缩放距离                
 
                 // Post Processing
                 const renderScene = new RenderPass(scene, camera);
@@ -412,17 +419,21 @@
             STATE.mode = 'tree';
             
             const geos = [
-                new THREE.SphereGeometry(0.4, 16, 16), 
-                new THREE.IcosahedronGeometry(0.4, 0), 
-                new THREE.SphereGeometry(0.25, 16, 16), 
-                new THREE.OctahedronGeometry(0.3, 0)   
+                new THREE.SphereGeometry(0.4, 16, 16), // 标准球
+                new THREE.IcosahedronGeometry(0.35, 1), // 稍微有棱角的柔和球
+                new THREE.SphereGeometry(0.25, 12, 12), // 小球
+                new THREE.IcosahedronGeometry(0.3, 2)   // 非常圆润的球
             ];
 
             const mats = [
-                new THREE.MeshStandardMaterial({ color: CONFIG.colors[0], roughness: 0.4, metalness: 0.1 }),
-                new THREE.MeshStandardMaterial({ color: CONFIG.colors[1], roughness: 0.2, metalness: 0.8 }),
-                new THREE.MeshPhysicalMaterial({ color: CONFIG.colors[2], transmission: 0.6, opacity: 1, roughness: 0, metalness: 0, ior: 1.5 }), 
-                new THREE.MeshPhysicalMaterial({ color: CONFIG.colors[3], transmission: 0.4, opacity: 1, roughness: 0.1, metalness: 0.2 })
+                // 粉色系，带一点自发光
+                new THREE.MeshStandardMaterial({ color: CONFIG.colors[0], roughness: 0.6, metalness: 0.1, emissive: CONFIG.colors[0], emissiveIntensity: 0.3 }),
+                // 蓝色系
+                new THREE.MeshStandardMaterial({ color: CONFIG.colors[1], roughness: 0.5, metalness: 0.2, emissive: CONFIG.colors[1], emissiveIntensity: 0.3 }),
+                // 玫粉色，玻璃质感保留，但也加一点点自发光
+                new THREE.MeshPhysicalMaterial({ color: CONFIG.colors[2], transmission: 0.5, opacity: 0.9, roughness: 0.2, ior: 1.4, emissive: CONFIG.colors[2], emissiveIntensity: 0.2 }), 
+                // 嫩绿色
+                new THREE.MeshStandardMaterial({ color: CONFIG.colors[3], roughness: 0.6, metalness: 0.1, emissive: CONFIG.colors[3], emissiveIntensity: 0.3 })
             ];
 
             geos.forEach((geo, i) => {
@@ -479,38 +490,42 @@
                 const rand = Math.random();
                 let pos = new THREE.Vector3();
 
-                // 比例分配：脸50%，头顶毛30%，耳朵20%
-                if (rand < 0.5) {
-                    // 脸：横向椭圆
-                    const r = 7 * Math.cbrt(Math.random());
+                // 比例调整：脸40%，头顶毛40%，耳朵20%
+                if (rand < 0.4) {
+                    // --- 脸蛋 ---
+                    // 收紧半径，减少随机散射，使其更像一个结实的椭圆体
+                    const r = 5 + Math.random() * 2; // 半径范围 5-7
                     const phi = Math.acos(-1 + 2 * Math.random());
                     const theta = Math.random() * Math.PI * 2;
-                    // X拉宽做脸
-                    pos.set(r * Math.sin(phi) * Math.cos(theta) * 1.3, r * Math.sin(phi) * Math.sin(theta) * 0.9, r * Math.cos(phi) * 0.9);
+                    // X轴拉宽(1.4倍), Y轴压扁(0.8倍), Z轴前后压扁(0.7倍) -> 扁平脸
+                    pos.set(r * Math.sin(phi) * Math.cos(theta) * 1.4, r * Math.sin(phi) * Math.sin(theta) * 0.8, r * Math.cos(phi) * 0.7);
                 } else if (rand < 0.8) {
-                    // 头顶卷毛：在脸上方的一个半球
-                    const r = 5 * Math.cbrt(Math.random());
-                    const phi = Math.acos(-1 + 2 * Math.random());
+                    // --- 头顶卷毛 ---
+                    // 这是一个更密集的小半球，紧贴头顶
+                    const r = 3.5 + Math.random() * 1.5; // 半径范围 3.5-5
+                    // 只取上半球 (phi 0 到 PI/2)
+                    const phi = Math.random() * Math.PI / 2;
                     const theta = Math.random() * Math.PI * 2;
-                    pos.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
-                    pos.y += 4; // 移到头顶
+                    pos.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi) * 0.8);
+                    pos.y += 3.5; // 精确向上平移到头顶位置
                 } else {
-                    // 耳朵：两侧耷拉的椭圆
+                    // --- 耳朵 ---
+                    // 更长、更具体的下垂形状
                     const isLeft = rand < 0.9 ? -1 : 1;
-                    const r = 2.5 * Math.cbrt(Math.random());
-                    const phi = Math.acos(-1 + 2 * Math.random());
-                    const theta = Math.random() * Math.PI * 2;
+                    // 使用参数方程生成一个长条水滴形
+                    const t = Math.random() * Math.PI; // 0 到 PI
+                    const earLen = 6;
+                    const earWidth = 2;
                     
-                    let ex = r * Math.sin(phi) * Math.cos(theta);
-                    let ey = r * Math.sin(phi) * Math.sin(theta) * 2; // 拉长
-                    let ez = r * Math.cos(phi);
+                    let ex = Math.sin(t) * earWidth * isLeft; // 宽度
+                    let ey = -t * earLen * 0.8; // 向下垂，长度缩放
+                    let ez = Math.cos(t) * earWidth * 0.5 * (Math.random()-0.5); // 增加一点厚度随机
                     
-                    // 旋转耳朵稍微向外
-                    pos.set(ex + (isLeft * 9), ey + 1, ez);
+                    // 定位到脸颊两侧，并稍微旋转
+                    pos.set(ex + (isLeft * 6), ey + 2, ez + 2);
                 }
                 return pos;
             }
-
             const total = CONFIG.count;
             const dummy = new THREE.Object3D();
             let indexPerMesh = [0, 0, 0, 0];
@@ -598,7 +613,8 @@
             requestAnimationFrame(animate);
 
             TWEEN.update(time);
-
+            if (controls) controls.update(); // 新增这一行，必须每帧调用
+            
             if (instanceData.length === 0) {
                 composer.render();
                 return;
