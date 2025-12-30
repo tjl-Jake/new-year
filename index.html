@@ -542,9 +542,43 @@
         }
 
         // --- UI & Persistence Logic ---
-        function setupUI() {
-            // 1. Load Data
-            loadFromDB('photos').then(items => { items.forEach(item => { const url = URL.createObjectURL(item.file); createPhotoMesh(url); }); });
+function setupUI() {
+            // --- 1. 变量声明移到最顶端 (修复报错的核心) ---
+            const imgInput = document.getElementById('img-input');
+            const bgmInput = document.getElementById('bgm-input');
+            const audioPlayer = document.getElementById('bgm-player');
+            const playlistContainer = document.getElementById('playlist-container');
+            const playPauseBtn = document.getElementById('play-pause-btn');
+            
+            let playlist = []; 
+            let currentTrackIndex = -1;
+
+            // --- 2. 定义功能函数 (放在这里确保逻辑通顺) ---
+            function renderPlaylist() {
+                playlistContainer.innerHTML = '';
+                playlist.forEach((track, index) => {
+                    const div = document.createElement('div'); div.className = 'track-item';
+                    if (index === currentTrackIndex) div.classList.add('active');
+                    div.innerText = track.name; div.onclick = () => playTrack(index);
+                    playlistContainer.appendChild(div);
+                });
+            }
+
+            function playTrack(index) {
+                if (index < 0 || index >= playlist.length) return;
+                currentTrackIndex = index; 
+                audioPlayer.src = playlist[index].url; 
+                audioPlayer.play();
+                playPauseBtn.innerText = "⏸ 暂停"; 
+                renderPlaylist();
+            }
+
+            // --- 3. 加载数据 (现在 playlist 已经存在了，不会报错) ---
+            
+            // 加载 IndexedDB (本地缓存)
+            loadFromDB('photos').then(items => { 
+                items.forEach(item => { const url = URL.createObjectURL(item.file); createPhotoMesh(url); }); 
+            });
             loadFromDB('music').then(items => { 
                 items.forEach(item => { 
                     playlist.push({name: item.name, url: URL.createObjectURL(item.file)}); 
@@ -552,7 +586,7 @@
                 if(items.length > 0) { playlistContainer.style.display = 'block'; renderPlaylist(); }
             });
             
-            // 2. Load Shared Assets (给朋友看的预设)
+            // 加载 SHARED_ASSETS (给朋友看的预设)
             SHARED_ASSETS.images.forEach(url => createPhotoMesh(url));
             SHARED_ASSETS.music.forEach(track => {
                 playlist.push(track);
@@ -560,8 +594,9 @@
                 renderPlaylist();
             });
 
-            // 3. Listeners
-            const imgInput = document.getElementById('img-input');
+            // --- 4. 绑定事件监听器 ---
+
+            // 图片上传
             imgInput.addEventListener('change', (e) => {
                 const files = Array.from(e.target.files);
                 files.forEach(file => {
@@ -570,13 +605,7 @@
                 });
             });
 
-            const bgmInput = document.getElementById('bgm-input');
-            const audioPlayer = document.getElementById('bgm-player');
-            const playlistContainer = document.getElementById('playlist-container');
-            const playPauseBtn = document.getElementById('play-pause-btn');
-            
-            let playlist = []; let currentTrackIndex = -1;
-
+            // 音乐上传
             bgmInput.addEventListener('change', (e) => {
                 const files = Array.from(e.target.files); if (files.length === 0) return;
                 files.forEach(file => {
@@ -587,34 +616,22 @@
                 if (audioPlayer.paused && currentTrackIndex === -1) playTrack(playlist.length - files.length);
             });
 
-            document.getElementById('clear-db-btn').addEventListener('click', clearDB);
-
-            function renderPlaylist() {
-                playlistContainer.innerHTML = '';
-                playlist.forEach((track, index) => {
-                    const div = document.createElement('div'); div.className = 'track-item';
-                    if (index === currentTrackIndex) div.classList.add('active');
-                    div.innerText = track.name; div.onclick = () => playTrack(index);
-                    playlistContainer.appendChild(div);
-                });
-            }
-            function playTrack(index) {
-                if (index < 0 || index >= playlist.length) return;
-                currentTrackIndex = index; audioPlayer.src = playlist[index].url; audioPlayer.play();
-                playPauseBtn.innerText = "⏸ 暂停"; renderPlaylist();
-            }
+            // 播放控制
             audioPlayer.addEventListener('ended', () => {
                 let nextIndex = currentTrackIndex + 1; if (nextIndex >= playlist.length) nextIndex = 0;
                 playTrack(nextIndex);
             });
+            
             playPauseBtn.addEventListener('click', () => {
                 if (playlist.length === 0) { alert("请先上传歌曲~"); return; }
                 if (audioPlayer.paused) { audioPlayer.play(); playPauseBtn.innerText = "⏸ 暂停"; }
                 else { audioPlayer.pause(); playPauseBtn.innerText = "▶ 播放"; }
             });
+
+            // 辅助功能
+            document.getElementById('clear-db-btn').addEventListener('click', clearDB);
             document.getElementById('fullscreen-btn').addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); });
         }
-
         function createPhotoMesh(imgUrl) {
             const textureLoader = new THREE.TextureLoader();
             textureLoader.load(imgUrl, (tex) => {
