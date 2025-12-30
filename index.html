@@ -53,6 +53,8 @@
             box-shadow: 0 4px 15px rgba(176, 224, 255, 0.3);
             max-width: 250px;
             transition: all 0.3s ease;
+            max-height: 80vh; /* 防止太高超出屏幕 */
+            overflow-y: auto;
         }
         
         .control-panel h3 { margin: 0 0 10px 0; font-size: 16px; color: #ff6b95; }
@@ -70,6 +72,39 @@
         }
         button:hover { transform: scale(1.05); }
         input[type="file"] { font-size: 12px; width: 100%; margin-bottom: 5px; }
+
+        /* --- 新增：播放列表样式 --- */
+        .playlist-box {
+            margin-top: 5px;
+            margin-bottom: 10px;
+            max-height: 100px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 8px;
+            padding: 5px;
+        }
+        .playlist-box::-webkit-scrollbar { width: 4px; }
+        .playlist-box::-webkit-scrollbar-thumb { background: #ffc0cb; border-radius: 2px; }
+
+        .track-item {
+            font-size: 11px;
+            padding: 4px 8px;
+            cursor: pointer;
+            color: #555;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: all 0.2s;
+        }
+        .track-item:hover { background: rgba(255, 255, 255, 0.5); color: #ff6b95; }
+        .track-item.active {
+            color: #ff6b95;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 4px;
+        }
+        .track-item.active::before { content: "♪ "; }
 
         /* 右下角：AI 预览与指引 */
         .ai-panel {
@@ -117,7 +152,7 @@
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle, #fff0f5, #e0f7fa);
-            z-index: 200; /* 最高层级 */
+            z-index: 200;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -134,69 +169,40 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* --- 修复后的 倒计时 UI 样式 --- */
+        /* 倒计时 UI */
         #countdown-overlay {
             position: absolute;
-            top: 0; 
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 100; /* 高层级，确保覆盖在Canvas上 */
-            display: none; /* JS控制显示 */
-            pointer-events: auto; /* 关键：开启交互，允许点击 */
-            
-            /* 使用Flex居中 */
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 100;
+            display: none; /* JS控制 */
+            pointer-events: auto;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            background: rgba(255, 240, 245, 0.2); /* 极淡的背景防止误触3D */
-            backdrop-filter: blur(2px); /* 轻微模糊背景 */
+            background: rgba(255, 240, 245, 0.2);
+            backdrop-filter: blur(2px);
         }
-
         .countdown-title {
-            font-size: 24px;
-            color: #87CEEB; /* 粉蓝 */
-            letter-spacing: 2px;
-            margin-bottom: 20px;
-            text-shadow: 0 0 10px rgba(135, 206, 235, 0.5);
-            font-weight: 300;
+            font-size: 24px; color: #87CEEB; letter-spacing: 2px; margin-bottom: 20px;
+            text-shadow: 0 0 10px rgba(135, 206, 235, 0.5); font-weight: 300;
         }
-
         .countdown-number {
-            font-size: 120px;
-            font-weight: bold;
-            font-family: 'Segoe UI', sans-serif;
-            color: #87CEEB;
+            font-size: 120px; font-weight: bold; font-family: 'Segoe UI', sans-serif; color: #87CEEB;
             text-shadow: 0 0 20px rgba(135, 206, 235, 0.8), 0 0 40px rgba(255, 192, 203, 0.4);
             transition: all 0.2s;
         }
-
         .pulse { animation: pulse-anim 1s infinite; }
         @keyframes pulse-anim {
             0% { transform: scale(1); opacity: 1; }
             50% { transform: scale(1.05); opacity: 0.8; }
             100% { transform: scale(1); opacity: 1; }
         }
-        
-        /* 立即开始按钮样式 */
         #skip-countdown-btn {
-            margin-top: 40px;
-            background: rgba(255, 255, 255, 0.3);
-            border: 2px solid #87CEEB;
-            color: #87CEEB;
-            padding: 10px 30px;
-            border-radius: 30px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: all 0.3s;
-            box-shadow: 0 4px 10px rgba(135, 206, 235, 0.2);
+            margin-top: 40px; background: rgba(255, 255, 255, 0.3); border: 2px solid #87CEEB; color: #87CEEB;
+            padding: 10px 30px; border-radius: 30px; cursor: pointer; font-size: 16px; font-weight: bold;
+            transition: all 0.3s; box-shadow: 0 4px 10px rgba(135, 206, 235, 0.2);
         }
-        #skip-countdown-btn:hover {
-            background: #87CEEB;
-            color: white;
-            transform: scale(1.1);
-        }
+        #skip-countdown-btn:hover { background: #87CEEB; color: white; transform: scale(1.1); }
 
         /* 隐藏的 input */
         #bgm-input, #img-input { display: none; }
@@ -234,10 +240,15 @@
             <button onclick="document.getElementById('img-input').click()">📸 上传照片上墙</button>
             <input type="file" id="img-input" accept="image/*" multiple>
             <div style="height:10px;"></div>
+            
             <h3>🎵 氛围音乐</h3>
-            <button onclick="document.getElementById('bgm-input').click()">📂 上传 BGM</button>
-            <input type="file" id="bgm-input" accept="audio/*">
+            <button onclick="document.getElementById('bgm-input').click()">📂 添加歌曲 (可多选)</button>
+            <input type="file" id="bgm-input" accept="audio/*" multiple>
+            
+            <div id="playlist-container" class="playlist-box" style="display:none;"></div>
+            
             <button id="play-pause-btn">▶ 播放 / 暂停</button>
+
             <div style="margin-top:10px; border-top: 1px solid #ccc; padding-top:5px;">
                 <button id="fullscreen-btn">⛶ 全屏体验</button>
             </div>
@@ -260,9 +271,7 @@
 
     <div id="canvas-container"></div>
 
-    <audio id="bgm-player" loop></audio>
-
-    <script type="module">
+    <audio id="bgm-player" loop></audio> <script type="module">
         import * as THREE from 'three';
         import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
         import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -275,25 +284,15 @@
         const CONFIG = {
             count: 1500, 
             colors: [0xffc0cb, 0x87ceeb, 0xff69b4, 0x98fb98], 
-            bloomStrength: 0.6,
-            bloomRadius: 0.4,
-            bloomThreshold: 0.4 
+            bloomStrength: 0.6, bloomRadius: 0.4, bloomThreshold: 0.4 
         };
 
         const STATE = {
-            mode: 'intro',
-            isZoomed: false,
-            handDetected: false,
-            rotationSpeed: 0.001,
-            targetRotationY: 0
+            mode: 'intro', isZoomed: false, handDetected: false, rotationSpeed: 0.001, targetRotationY: 0
         };
 
         let scene, camera, renderer, composer, controls;
-        let instancedMeshes = []; 
-        let photoMeshes = []; 
-        let goldParticles; 
-        
-        let instanceData = []; 
+        let instancedMeshes = [], photoMeshes = [], goldParticles, instanceData = []; 
 
         // --- Initialization ---
         async function init() {
@@ -312,40 +311,23 @@
                 renderer.toneMapping = THREE.ReinhardToneMapping;
                 container.appendChild(renderer.domElement);
 
-                // 控制器
                 controls = new OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.dampingFactor = 0.05;
-                controls.enablePan = false;
-                controls.minDistance = 10;
-                controls.maxDistance = 150;
-                // 默认禁用自动旋转，如果需要可以 controls.autoRotate = true;
+                controls.enableDamping = true; controls.dampingFactor = 0.05;
+                controls.enablePan = false; controls.minDistance = 10; controls.maxDistance = 150;
 
-                // Post Processing
                 const renderScene = new RenderPass(scene, camera);
                 const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-                bloomPass.threshold = CONFIG.bloomThreshold;
-                bloomPass.strength = CONFIG.bloomStrength;
-                bloomPass.radius = CONFIG.bloomRadius;
+                bloomPass.threshold = CONFIG.bloomThreshold; bloomPass.strength = CONFIG.bloomStrength; bloomPass.radius = CONFIG.bloomRadius;
 
                 composer = new EffectComposer(renderer);
-                composer.addPass(renderScene);
-                composer.addPass(bloomPass);
+                composer.addPass(renderScene); composer.addPass(bloomPass);
 
-                // Lights
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-                scene.add(ambientLight);
-                const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-                dirLight.position.set(10, 20, 10);
-                scene.add(dirLight);
-                const pointLight = new THREE.PointLight(0xff6b95, 2, 50);
-                pointLight.position.set(0, 5, 0);
-                scene.add(pointLight);
+                scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+                const dirLight = new THREE.DirectionalLight(0xffffff, 1.5); dirLight.position.set(10, 20, 10); scene.add(dirLight);
+                const pointLight = new THREE.PointLight(0xff6b95, 2, 50); pointLight.position.set(0, 5, 0); scene.add(pointLight);
 
-                // Assets & Setup
                 updateLoadingText("正在连接 AI 引擎...");
                 await setupMediaPipe();
-                
                 finishLoading();
                 window.addEventListener('resize', onWindowResize);
                 setupUI();
@@ -358,8 +340,7 @@
         }
 
         function updateLoadingText(text) {
-            const el = document.getElementById('loading-text');
-            if(el) el.innerText = text;
+            const el = document.getElementById('loading-text'); if(el) el.innerText = text;
         }
 
         function finishLoading() {
@@ -370,36 +351,30 @@
             startBtn.addEventListener('click', startIntro);
         }
 
-        // --- UI 倒计时逻辑 (修复点击) ---
+        // --- UI 倒计时逻辑 ---
         function startIntro() {
             const screen = document.getElementById('loading-screen');
             screen.style.opacity = 0;
             setTimeout(() => screen.remove(), 1000);
 
-            const audio = document.getElementById('bgm-player');
-            if (audio.src) audio.play().catch(e => console.log("Audio needs interaction"));
+            // 音乐控制在 setupUI 里处理了
+            // const audio = document.getElementById('bgm-player');
+            // if (audio.src) audio.play().catch(e => console.log("Audio needs interaction"));
 
-            // 显示 UI 层 (Flex布局确保居中)
             const overlay = document.getElementById('countdown-overlay');
             const title = document.getElementById('cd-title');
             const number = document.getElementById('cd-number');
-            overlay.style.display = 'flex'; // <--- 关键修改
+            overlay.style.display = 'flex';
 
-            // --- 按钮逻辑 ---
             const skipBtn = document.getElementById('skip-countdown-btn');
             let checkTimer = null;
 
             skipBtn.onclick = () => {
-                console.log("Skip button clicked!"); // 调试信息
                 if(checkTimer) clearInterval(checkTimer);
                 overlay.style.opacity = 0;
-                setTimeout(() => {
-                     overlay.style.display = 'none';
-                     initMainScene(); 
-                }, 500);
+                setTimeout(() => { overlay.style.display = 'none'; initMainScene(); }, 500);
             };
 
-            // --- 时间配置 ---
             const TARGET_DATE = new Date("2026-01-01T00:00:00").getTime();
             const START_SHOWING_NUMBERS = TARGET_DATE - (60 * 1000); 
 
@@ -410,38 +385,25 @@
 
                 if (distance <= 0) {
                     clearInterval(checkTimer);
-                    number.innerText = "2026";
-                    number.style.fontSize = "120px";
-                    number.classList.add('pulse');
-                    title.innerText = "新年快乐 Happy New Year";
-                    skipBtn.style.display = 'none';
-                    
+                    number.innerText = "2026"; number.style.fontSize = "120px"; number.classList.add('pulse');
+                    title.innerText = "新年快乐 Happy New Year"; skipBtn.style.display = 'none';
                     setTimeout(() => {
                         overlay.style.opacity = 0;
-                        setTimeout(() => {
-                             overlay.style.display = 'none';
-                             initMainScene(); 
-                        }, 1000);
+                        setTimeout(() => { overlay.style.display = 'none'; initMainScene(); }, 1000);
                     }, 2000);
-                } 
-                else if (now >= START_SHOWING_NUMBERS) {
+                } else if (now >= START_SHOWING_NUMBERS) {
                     title.innerText = "即将迈入 2026";
-                    const secondsLeft = Math.floor(distance / 1000);
-                    number.innerText = secondsLeft;
-                    number.classList.add('pulse');
-                    number.style.fontSize = "150px";
-                } 
-                else {
+                    number.innerText = Math.floor(distance / 1000);
+                    number.classList.add('pulse'); number.style.fontSize = "150px";
+                } else {
                     title.innerText = "新年倒计时 Loading...";
-                    const timeStr = nowTimeObj.toTimeString().split(' ')[0];
-                    number.innerText = timeStr; 
-                    number.classList.remove('pulse');
-                    number.style.fontSize = "60px";
+                    number.innerText = nowTimeObj.toTimeString().split(' ')[0]; 
+                    number.classList.remove('pulse'); number.style.fontSize = "60px";
                 }
             }, 1000);
         }
 
-        // --- 核心场景：新几何体与算法 ---
+        // --- Main Scene ---
         function initMainScene() {
             STATE.mode = 'tree';
             
@@ -451,7 +413,6 @@
                 new THREE.SphereGeometry(0.25, 12, 12), 
                 new THREE.IcosahedronGeometry(0.3, 2)   
             ];
-
             const mats = [
                 new THREE.MeshStandardMaterial({ color: CONFIG.colors[0], roughness: 0.6, metalness: 0.1, emissive: CONFIG.colors[0], emissiveIntensity: 0.3 }),
                 new THREE.MeshStandardMaterial({ color: CONFIG.colors[1], roughness: 0.5, metalness: 0.2, emissive: CONFIG.colors[1], emissiveIntensity: 0.3 }),
@@ -466,346 +427,214 @@
                 instancedMeshes.push(mesh);
             });
 
-            // 1. 爱心形态
             function getHeartPos(i, total) {
-                const t = Math.random() * Math.PI * 2; 
-                const s = Math.cbrt(Math.random()); 
+                const t = Math.random() * Math.PI * 2; const s = Math.cbrt(Math.random()); 
                 const hx = 16 * Math.pow(Math.sin(t), 3);
                 const hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
                 const hz = (Math.random() - 0.5) * 8 * s; 
-                const scale = 0.8 * s; 
-                return new THREE.Vector3(hx * scale, hy * scale + 5, hz); 
+                return new THREE.Vector3(hx * 0.8 * s, hy * 0.8 * s + 5, hz); 
             }
 
-            // 2. 兔子
             function getRabbitPos(i, total) {
-                const rand = Math.random();
-                let pos = new THREE.Vector3();
+                const rand = Math.random(); let pos = new THREE.Vector3();
                 if (rand < 0.6) {
-                    const r = 9 * Math.cbrt(Math.random());
-                    const phi = Math.acos(-1 + 2 * Math.random());
-                    const theta = Math.random() * Math.PI * 2;
+                    const r = 9 * Math.cbrt(Math.random()); const phi = Math.acos(-1 + 2 * Math.random()); const theta = Math.random() * Math.PI * 2;
                     pos.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi) * 0.8);
                 } else {
-                    const whichEar = rand < 0.8 ? -1 : 1;
-                    const r = 3 * Math.sqrt(Math.random());
-                    const h = Math.random() * 12;
-                    const angle = Math.random() * Math.PI * 2;
-                    const ex = Math.cos(angle) * r + (whichEar * 5);
-                    const ey = h + 6;
-                    const ez = Math.sin(angle) * r;
+                    const whichEar = rand < 0.8 ? -1 : 1; const r = 3 * Math.sqrt(Math.random()); const h = Math.random() * 12; const angle = Math.random() * Math.PI * 2;
+                    const ex = Math.cos(angle) * r + (whichEar * 5); const ey = h + 6; const ez = Math.sin(angle) * r;
                     pos.set(ex * 1.2, ey, ez);
                 }
                 return pos;
             }
 
-            // 3. 羊头
             function getSheepHeadPos(i, total) {
-                const rand = Math.random();
-                let pos = new THREE.Vector3();
+                const rand = Math.random(); let pos = new THREE.Vector3();
                 if (rand < 0.4) {
-                    const r = 5 + Math.random() * 2;
-                    const phi = Math.acos(-1 + 2 * Math.random());
-                    const theta = Math.random() * Math.PI * 2;
+                    const r = 5 + Math.random() * 2; const phi = Math.acos(-1 + 2 * Math.random()); const theta = Math.random() * Math.PI * 2;
                     pos.set(r * Math.sin(phi) * Math.cos(theta) * 1.4, r * Math.sin(phi) * Math.sin(theta) * 0.8, r * Math.cos(phi) * 0.7);
                 } else if (rand < 0.8) {
-                    const r = 3.5 + Math.random() * 1.5; 
-                    const phi = Math.random() * Math.PI / 2;
-                    const theta = Math.random() * Math.PI * 2;
-                    pos.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi) * 0.8);
-                    pos.y += 3.5; 
+                    const r = 3.5 + Math.random() * 1.5; const phi = Math.random() * Math.PI / 2; const theta = Math.random() * Math.PI * 2;
+                    pos.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi) * 0.8); pos.y += 3.5; 
                 } else {
-                    const isLeft = rand < 0.9 ? -1 : 1;
-                    const t = Math.random() * Math.PI;
-                    const earWidth = 2;
-                    let ex = Math.sin(t) * earWidth * isLeft; 
-                    let ey = -t * 6 * 0.8; 
-                    let ez = Math.cos(t) * earWidth * 0.5 * (Math.random()-0.5); 
+                    const isLeft = rand < 0.9 ? -1 : 1; const t = Math.random() * Math.PI; const earWidth = 2;
+                    let ex = Math.sin(t) * earWidth * isLeft; let ey = -t * 6 * 0.8; let ez = Math.cos(t) * earWidth * 0.5 * (Math.random()-0.5); 
                     pos.set(ex + (isLeft * 6), ey + 2, ez + 2);
                 }
                 return pos;
             }
 
-            const total = CONFIG.count;
-            const dummy = new THREE.Object3D();
-            let indexPerMesh = [0, 0, 0, 0];
+            const total = CONFIG.count; const dummy = new THREE.Object3D(); let indexPerMesh = [0, 0, 0, 0];
 
             for (let i = 0; i < total; i++) {
-                const type = i % 4;
-                const idx = indexPerMesh[type];
-
-                const treePos = getHeartPos(i, total); 
-                const rabbitPos = getRabbitPos(i, total);
-                const sheepPos = getSheepHeadPos(i, total); 
-                
+                const type = i % 4; const idx = indexPerMesh[type];
+                const treePos = getHeartPos(i, total); const rabbitPos = getRabbitPos(i, total); const sheepPos = getSheepHeadPos(i, total); 
                 const currentPos = new THREE.Vector3((Math.random()-0.5)*100, (Math.random()-0.5)*100, (Math.random()-0.5)*100);
-
-                instanceData.push({
-                    type: type,
-                    index: idx,
-                    currentPos: currentPos,
-                    targetPos: treePos, 
-                    treePos: treePos,
-                    rabbitPos: rabbitPos,
-                    sheepPos: sheepPos,
-                    velocity: new THREE.Vector3(0,0,0)
-                });
-
+                instanceData.push({ type: type, index: idx, currentPos: currentPos, targetPos: treePos, treePos: treePos, rabbitPos: rabbitPos, sheepPos: sheepPos });
                 indexPerMesh[type]++;
             }
 
-            const pGeo = new THREE.BufferGeometry();
-            const pPos = [];
-            for(let k=0; k<800; k++) {
-                pPos.push((Math.random()-0.5)*60, (Math.random()-0.5)*60, (Math.random()-0.5)*60);
-            }
+            const pGeo = new THREE.BufferGeometry(); const pPos = [];
+            for(let k=0; k<800; k++) pPos.push((Math.random()-0.5)*60, (Math.random()-0.5)*60, (Math.random()-0.5)*60);
             pGeo.setAttribute('position', new THREE.Float32BufferAttribute(pPos, 3));
-            const pMat = new THREE.PointsMaterial({color: 0xffd700, size: 0.2, transparent: true, opacity: 0.6});
-            goldParticles = new THREE.Points(pGeo, pMat);
+            goldParticles = new THREE.Points(pGeo, new THREE.PointsMaterial({color: 0xffd700, size: 0.2, transparent: true, opacity: 0.6}));
             scene.add(goldParticles);
         }
 
-        // --- 交互逻辑 ---
         function switchState(newState) {
             if (STATE.mode === newState) return;
-            
-            let animalType = 'rabbit';
-            if (newState === 'scatter') {
-                animalType = Math.random() > 0.5 ? 'rabbit' : 'sheep';
-            }
-
+            let animalType = 'rabbit'; if (newState === 'scatter') animalType = Math.random() > 0.5 ? 'rabbit' : 'sheep';
             STATE.mode = newState;
-            
             instanceData.forEach(data => {
-                if (newState === 'tree') {
-                    data.targetPos = data.treePos; 
-                } else if (newState === 'scatter') {
-                    data.targetPos = (animalType === 'rabbit') ? data.rabbitPos : data.sheepPos;
-                }
+                if (newState === 'tree') data.targetPos = data.treePos;
+                else if (newState === 'scatter') data.targetPos = (animalType === 'rabbit') ? data.rabbitPos : data.sheepPos;
             });
-
-            photoMeshes.forEach(pm => {
-                if (newState === 'tree') {
-                    pm.targetPos = pm.treePos;
-                } else {
-                    pm.targetPos = pm.scatterPos; 
-                }
-            });
+            photoMeshes.forEach(pm => pm.targetPos = (newState === 'tree') ? pm.treePos : pm.scatterPos);
         }
 
         function handleZoom(doZoom) {
-            if (STATE.isZoomed === doZoom) return;
-            STATE.isZoomed = doZoom;
-            
-            const targetZ = doZoom ? 25 : 80;
-            new TWEEN.Tween(camera.position)
-                .to({ z: targetZ }, 1000)
-                .easing(TWEEN.Easing.Quadratic.Out)
-                .start();
+            if (STATE.isZoomed === doZoom) return; STATE.isZoomed = doZoom;
+            new TWEEN.Tween(camera.position).to({ z: doZoom ? 25 : 80 }, 1000).easing(TWEEN.Easing.Quadratic.Out).start();
         }
-
-        // --- Animation Loop ---
-        const dummy = new THREE.Object3D();
 
         function animate(time) {
             requestAnimationFrame(animate);
+            TWEEN.update(time); if(controls) controls.update();
+            if (instanceData.length === 0) { composer.render(); return; }
 
-            TWEEN.update(time);
-            if(controls) controls.update(); 
-
-            if (instanceData.length === 0) {
-                composer.render();
-                return;
-            }
-
-            const lerpSpeed = 0.05;
-            
+            const dummy = new THREE.Object3D(); const lerpSpeed = 0.05;
             for(let i=0; i<instanceData.length; i++) {
-                const d = instanceData[i];
-                d.currentPos.lerp(d.targetPos, lerpSpeed);
-                
+                const d = instanceData[i]; d.currentPos.lerp(d.targetPos, lerpSpeed);
                 const noise = Math.sin(time * 0.001 + d.index) * 0.05;
-                dummy.position.copy(d.currentPos);
-                dummy.position.y += noise;
-                dummy.rotation.x += 0.01;
-                dummy.rotation.y += 0.01;
-                dummy.updateMatrix();
+                dummy.position.copy(d.currentPos); dummy.position.y += noise;
+                dummy.rotation.x += 0.01; dummy.rotation.y += 0.01; dummy.updateMatrix();
                 instancedMeshes[d.type].setMatrixAt(d.index, dummy.matrix);
             }
-
             instancedMeshes.forEach(mesh => mesh.instanceMatrix.needsUpdate = true);
-
-            photoMeshes.forEach(pm => {
-                pm.mesh.position.lerp(pm.targetPos, lerpSpeed);
-                pm.mesh.lookAt(camera.position); 
-            });
+            photoMeshes.forEach(pm => { pm.mesh.position.lerp(pm.targetPos, lerpSpeed); pm.mesh.lookAt(camera.position); });
 
             if (STATE.mode === 'scatter') {
                 const rSpeed = STATE.handDetected ? STATE.rotationSpeed * 5 : 0;
                 if(STATE.handDetected) scene.rotation.y += rSpeed;
             }
-
-            if(goldParticles) {
-                goldParticles.rotation.y -= 0.001;
-            }
-
+            if(goldParticles) goldParticles.rotation.y -= 0.001;
             composer.render();
         }
 
-
-        // --- MediaPipe Hand Tracking ---
         let vision, handLandmarker;
-
         async function setupMediaPipe() {
             try {
-                vision = await FilesetResolver.forVisionTasks(
-                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-                );
+                vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
                 handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                        delegate: "GPU"
-                    },
-                    runningMode: "VIDEO",
-                    numHands: 1
+                    baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
+                    runningMode: "VIDEO", numHands: 1
                 });
                 startWebcam();
-            } catch (e) {
-                console.warn("MediaPipe 加载失败，请检查网络", e);
-                document.querySelector('.guide-box').innerHTML += "<div style='color:red'>AI服务连接失败</div>";
-            }
+            } catch (e) { console.warn("AI Fail", e); document.querySelector('.guide-box').innerHTML += "<div style='color:red'>AI服务失败</div>"; }
         }
 
         function startWebcam() {
-            const video = document.getElementById("webcam");
-            const canvas = document.getElementById("output_canvas");
-            const canvasCtx = canvas.getContext("2d");
-
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                console.warn("Browser API not supported");
-                return;
-            }
-
-            navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
-                video.srcObject = stream;
-                video.addEventListener("loadeddata", predictWebcam);
-            }).catch(err => {
-                console.warn("Camera access denied", err);
-            });
-
+            const video = document.getElementById("webcam"); const canvas = document.getElementById("output_canvas"); const canvasCtx = canvas.getContext("2d");
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+            navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => { video.srcObject = stream; video.addEventListener("loadeddata", predictWebcam); });
             let lastVideoTime = -1;
-            
             function predictWebcam() {
-                if(video.videoWidth) {
-                   canvas.width = video.videoWidth;
-                   canvas.height = video.videoHeight;
-                }
-
+                if(video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; }
                 let startTimeMs = performance.now();
                 if (lastVideoTime !== video.currentTime && handLandmarker) {
                     lastVideoTime = video.currentTime;
                     const results = handLandmarker.detectForVideo(video, startTimeMs);
-
-                    canvasCtx.save();
-                    canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-                    
+                    canvasCtx.save(); canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
                     if (results.landmarks && results.landmarks.length > 0) {
-                        STATE.handDetected = true;
-                        const landmarks = results.landmarks[0];
-                        drawHand(canvasCtx, landmarks);
-                        analyzeGesture(landmarks);
-                    } else {
-                        STATE.handDetected = false;
-                    }
+                        STATE.handDetected = true; drawHand(canvasCtx, results.landmarks[0]); analyzeGesture(results.landmarks[0]);
+                    } else STATE.handDetected = false;
                     canvasCtx.restore();
                 }
                 window.requestAnimationFrame(predictWebcam);
             }
         }
 
-        function drawHand(ctx, landmarks) {
-            ctx.fillStyle = "#ff6b95";
-            ctx.strokeStyle = "#87ceeb";
-            ctx.lineWidth = 2;
-            landmarks.forEach(p => {
-                ctx.beginPath();
-                ctx.arc(p.x * ctx.canvas.width, p.y * ctx.canvas.height, 3, 0, 2 * Math.PI);
-                ctx.fill();
-            });
+        function drawHand(ctx, lm) {
+            ctx.fillStyle = "#ff6b95"; ctx.strokeStyle = "#87ceeb"; ctx.lineWidth = 2;
+            lm.forEach(p => { ctx.beginPath(); ctx.arc(p.x * ctx.canvas.width, p.y * ctx.canvas.height, 3, 0, 2 * Math.PI); ctx.fill(); });
         }
 
         function analyzeGesture(lm) {
-            const wrist = lm[0];
-            const thumbTip = lm[4];
-            const indexTip = lm[8];
-            const middleTip = lm[12];
-            const ringTip = lm[16];
-            const pinkyTip = lm[20];
-
-            const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
-            if (pinchDist < 0.05) {
-                handleZoom(true);
-                return; 
-            } else {
-                handleZoom(false);
-            }
-
-            const tips = [indexTip, middleTip, ringTip, pinkyTip];
-            let avgDist = 0;
-            tips.forEach(tip => {
-                avgDist += Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
-            });
-            avgDist /= 4;
+            const wrist = lm[0], thumb = lm[4], index = lm[8];
+            const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+            if (pinchDist < 0.05) { handleZoom(true); return; } else handleZoom(false);
             
-            if (avgDist < 0.25) {
-                switchState('tree'); 
-            } else if (avgDist > 0.4) {
-                switchState('scatter'); 
-            }
-
+            const tips = [lm[8], lm[12], lm[16], lm[20]];
+            let avgDist = 0; tips.forEach(tip => avgDist += Math.hypot(tip.x - wrist.x, tip.y - wrist.y)); avgDist /= 4;
+            if (avgDist < 0.25) switchState('tree'); else if (avgDist > 0.4) switchState('scatter');
+            
             if (STATE.mode === 'scatter') {
-                const handX = wrist.x; 
-                if (handX < 0.4) STATE.rotationSpeed = -0.01;
-                else if (handX > 0.6) STATE.rotationSpeed = 0.01;
-                else STATE.rotationSpeed = 0;
+                if (wrist.x < 0.4) STATE.rotationSpeed = -0.01; else if (wrist.x > 0.6) STATE.rotationSpeed = 0.01; else STATE.rotationSpeed = 0;
             }
         }
 
-        // --- Photo Wall Logic ---
+        // --- UI & Logic ---
         function setupUI() {
             const imgInput = document.getElementById('img-input');
             imgInput.addEventListener('change', (e) => {
-                const files = e.target.files;
-                if(!files.length) return;
-
+                const files = e.target.files; if(!files.length) return;
                 Array.from(files).forEach(file => {
                     const reader = new FileReader();
-                    reader.onload = (evt) => {
-                        createPhotoMesh(evt.target.result);
-                    };
+                    reader.onload = (evt) => createPhotoMesh(evt.target.result);
                     reader.readAsDataURL(file);
                 });
             });
 
+            // --- 音乐播放列表逻辑 (New) ---
             const bgmInput = document.getElementById('bgm-input');
             const audioPlayer = document.getElementById('bgm-player');
+            const playlistContainer = document.getElementById('playlist-container');
+            const playPauseBtn = document.getElementById('play-pause-btn');
+            
+            let playlist = []; let currentTrackIndex = -1;
+
             bgmInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if(file) {
-                    const url = URL.createObjectURL(file);
-                    audioPlayer.src = url;
-                    audioPlayer.play();
-                }
+                const files = Array.from(e.target.files); if (files.length === 0) return;
+                files.forEach(file => playlist.push({ name: file.name, url: URL.createObjectURL(file) }));
+                playlistContainer.style.display = 'block';
+                renderPlaylist();
+                if (audioPlayer.paused && currentTrackIndex === -1) playTrack(playlist.length - files.length);
             });
 
-            document.getElementById('play-pause-btn').addEventListener('click', () => {
-                if (audioPlayer.paused) audioPlayer.play();
-                else audioPlayer.pause();
+            function renderPlaylist() {
+                playlistContainer.innerHTML = '';
+                playlist.forEach((track, index) => {
+                    const div = document.createElement('div'); div.className = 'track-item';
+                    if (index === currentTrackIndex) div.classList.add('active');
+                    div.innerText = track.name;
+                    div.onclick = () => playTrack(index);
+                    playlistContainer.appendChild(div);
+                });
+            }
+
+            function playTrack(index) {
+                if (index < 0 || index >= playlist.length) return;
+                currentTrackIndex = index;
+                audioPlayer.src = playlist[index].url;
+                audioPlayer.play();
+                playPauseBtn.innerText = "⏸ 暂停";
+                renderPlaylist();
+            }
+
+            audioPlayer.addEventListener('ended', () => {
+                let nextIndex = currentTrackIndex + 1;
+                if (nextIndex >= playlist.length) nextIndex = 0;
+                playTrack(nextIndex);
+            });
+
+            playPauseBtn.addEventListener('click', () => {
+                if (playlist.length === 0) { alert("请先上传歌曲~"); return; }
+                if (audioPlayer.paused) { audioPlayer.play(); playPauseBtn.innerText = "⏸ 暂停"; }
+                else { audioPlayer.pause(); playPauseBtn.innerText = "▶ 播放"; }
             });
 
             document.getElementById('fullscreen-btn').addEventListener('click', () => {
-                if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-                else document.exitFullscreen();
+                if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen();
             });
         }
 
@@ -813,51 +642,29 @@
             const textureLoader = new THREE.TextureLoader();
             textureLoader.load(imgUrl, (tex) => {
                 const aspect = tex.image.width / tex.image.height;
-                const width = 4; 
-                const height = width / aspect;
-
+                const width = 4; const height = width / aspect;
                 const geo = new THREE.PlaneGeometry(width, height);
                 const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
                 const mesh = new THREE.Mesh(geo, mat);
-
-                const borderGeo = new THREE.PlaneGeometry(width + 0.2, height + 0.2);
-                const borderMat = new THREE.MeshBasicMaterial({ color: 0xffc0cb });
-                const border = new THREE.Mesh(borderGeo, borderMat);
-                border.position.z = -0.01;
-                mesh.add(border);
-
+                const border = new THREE.Mesh(new THREE.PlaneGeometry(width + 0.2, height + 0.2), new THREE.MeshBasicMaterial({ color: 0xffc0cb }));
+                border.position.z = -0.01; mesh.add(border);
                 scene.add(mesh);
-
-                const theta = Math.random() * Math.PI * 2;
-                const r = 25; 
+                const theta = Math.random() * Math.PI * 2; const r = 25;
                 const treePos = new THREE.Vector3(Math.cos(theta)*r, (Math.random()*20)-5, Math.sin(theta)*r);
                 const scatterPos = new THREE.Vector3((Math.random()-0.5)*90, (Math.random()-0.5)*90, (Math.random()-0.5)*90);
-
-                const pm = {
-                    mesh: mesh,
-                    treePos: treePos,
-                    scatterPos: scatterPos,
-                    targetPos: (STATE.mode === 'tree') ? treePos : scatterPos
-                };
-                
-                mesh.position.copy(pm.targetPos);
-                mesh.scale.set(0,0,0);
+                const pm = { mesh: mesh, treePos: treePos, scatterPos: scatterPos, targetPos: (STATE.mode === 'tree') ? treePos : scatterPos };
+                mesh.position.copy(pm.targetPos); mesh.scale.set(0,0,0);
                 new TWEEN.Tween(mesh.scale).to({x:1, y:1, z:1}, 600).easing(TWEEN.Easing.Back.Out).start();
-
                 photoMeshes.push(pm);
             });
         }
 
         function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            composer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // Start
         init();
-
     </script>
 </body>
 </html>
