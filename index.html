@@ -117,7 +117,7 @@
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle, #fff0f5, #e0f7fa);
-            z-index: 100;
+            z-index: 200; /* 最高层级 */
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -134,21 +134,25 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* --- 倒计时 UI 样式 --- */
+        /* --- 修复后的 倒计时 UI 样式 --- */
         #countdown-overlay {
             position: absolute;
-            top: 0; left: 0; /* 改为全屏覆盖 */
-            width: 100%; height: 100%;
-            z-index: 100; /* 提到最高，确保没人能挡住它 */
-            display: none;
-            pointer-events: auto; /* 开启交互，这样你就可以右键检查了 */
+            top: 0; 
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100; /* 高层级，确保覆盖在Canvas上 */
+            display: none; /* JS控制显示 */
+            pointer-events: auto; /* 关键：开启交互，允许点击 */
             
-            /* 使用 Flex 居中内容 */
-            display: none; /* 默认隐藏，JS会改成 flex */
+            /* 使用Flex居中 */
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            background: rgba(255, 240, 245, 0.2); /* 极淡的背景防止误触3D */
+            backdrop-filter: blur(2px); /* 轻微模糊背景 */
         }
+
         .countdown-title {
             font-size: 24px;
             color: #87CEEB; /* 粉蓝 */
@@ -172,6 +176,26 @@
             0% { transform: scale(1); opacity: 1; }
             50% { transform: scale(1.05); opacity: 0.8; }
             100% { transform: scale(1); opacity: 1; }
+        }
+        
+        /* 立即开始按钮样式 */
+        #skip-countdown-btn {
+            margin-top: 40px;
+            background: rgba(255, 255, 255, 0.3);
+            border: 2px solid #87CEEB;
+            color: #87CEEB;
+            padding: 10px 30px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 4px 10px rgba(135, 206, 235, 0.2);
+        }
+        #skip-countdown-btn:hover {
+            background: #87CEEB;
+            color: white;
+            transform: scale(1.1);
         }
 
         /* 隐藏的 input */
@@ -198,25 +222,10 @@
         <button id="start-btn" style="display:none; font-size: 18px; padding: 10px 30px; margin-top: 20px;">开启盛典</button>
     </div>
 
-<div id="countdown-overlay">
+    <div id="countdown-overlay">
         <div class="countdown-title" id="cd-title">新年倒计时 Loading...</div>
         <div class="countdown-number" id="cd-number">--</div>
-        
-        <button id="skip-countdown-btn" style="
-            margin-top: 30px;
-            background: transparent;
-            border: 1px solid #87CEEB;
-            color: #87CEEB;
-            padding: 8px 24px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 14px;
-            pointer-events: auto; /* 关键：因为父容器穿透鼠标，这里必须开启 */
-            transition: all 0.3s;
-        " onmouseover="this.style.background='#87CEEB'; this.style.color='#fff'" 
-          onmouseout="this.style.background='transparent'; this.style.color='#87CEEB'">
-            🚀 立即开始
-        </button>
+        <button id="skip-countdown-btn">🚀 立即开始</button>
     </div>
 
     <div id="ui-layer">
@@ -234,7 +243,7 @@
             </div>
         </div>
 
-<div class="ai-panel pointer-events-auto">
+        <div class="ai-panel pointer-events-auto">
             <div class="guide-box">
                 <div style="font-weight: bold; margin-bottom: 5px; color:#ff6b95">AI 手势魔法</div>
                 <div class="guide-item">聚合 (爱心) <span class="icon">✊</span></div>
@@ -303,13 +312,14 @@
                 renderer.toneMapping = THREE.ReinhardToneMapping;
                 container.appendChild(renderer.domElement);
 
-                // 控制器 (新增)
+                // 控制器
                 controls = new OrbitControls(camera, renderer.domElement);
                 controls.enableDamping = true;
                 controls.dampingFactor = 0.05;
                 controls.enablePan = false;
                 controls.minDistance = 10;
                 controls.maxDistance = 150;
+                // 默认禁用自动旋转，如果需要可以 controls.autoRotate = true;
 
                 // Post Processing
                 const renderScene = new RenderPass(scene, camera);
@@ -360,6 +370,7 @@
             startBtn.addEventListener('click', startIntro);
         }
 
+        // --- UI 倒计时逻辑 (修复点击) ---
         function startIntro() {
             const screen = document.getElementById('loading-screen');
             screen.style.opacity = 0;
@@ -368,36 +379,43 @@
             const audio = document.getElementById('bgm-player');
             if (audio.src) audio.play().catch(e => console.log("Audio needs interaction"));
 
-            // 显示 UI 层
+            // 显示 UI 层 (Flex布局确保居中)
             const overlay = document.getElementById('countdown-overlay');
             const title = document.getElementById('cd-title');
             const number = document.getElementById('cd-number');
-            overlay.style.display = 'flex'; 
-            overlay.style.flexDirection = 'column';
-            overlay.style.alignItems = 'center';
-            overlay.style.justifyContent = 'center';
+            overlay.style.display = 'flex'; // <--- 关键修改
 
-            // --- 关键时间配置 ---
-            // 目标时刻：2026年1月1日 00:00:00
+            // --- 按钮逻辑 ---
+            const skipBtn = document.getElementById('skip-countdown-btn');
+            let checkTimer = null;
+
+            skipBtn.onclick = () => {
+                console.log("Skip button clicked!"); // 调试信息
+                if(checkTimer) clearInterval(checkTimer);
+                overlay.style.opacity = 0;
+                setTimeout(() => {
+                     overlay.style.display = 'none';
+                     initMainScene(); 
+                }, 500);
+            };
+
+            // --- 时间配置 ---
             const TARGET_DATE = new Date("2026-01-01T00:00:00").getTime();
-            
-            // 触发倒数的时刻：目标时刻前 60 秒
             const START_SHOWING_NUMBERS = TARGET_DATE - (60 * 1000); 
 
-            const checkTimer = setInterval(() => {
+            checkTimer = setInterval(() => {
                 const nowTimeObj = new Date();
                 const now = nowTimeObj.getTime();
                 const distance = TARGET_DATE - now;
 
-                // 1. 如果时间到了 (Happy New Year!)
                 if (distance <= 0) {
                     clearInterval(checkTimer);
                     number.innerText = "2026";
                     number.style.fontSize = "120px";
                     number.classList.add('pulse');
                     title.innerText = "新年快乐 Happy New Year";
+                    skipBtn.style.display = 'none';
                     
-                    // 停留 2 秒展示 2026，然后进入 3D 场景
                     setTimeout(() => {
                         overlay.style.opacity = 0;
                         setTimeout(() => {
@@ -406,24 +424,19 @@
                         }, 1000);
                     }, 2000);
                 } 
-                // 2. 如果已经进入最后一分钟 (显示倒数秒数)
                 else if (now >= START_SHOWING_NUMBERS) {
                     title.innerText = "即将迈入 2026";
                     const secondsLeft = Math.floor(distance / 1000);
                     number.innerText = secondsLeft;
-                    number.classList.add('pulse'); // 加上心跳特效
-                    number.style.fontSize = "150px"; // 倒计时数字大一点
+                    number.classList.add('pulse');
+                    number.style.fontSize = "150px";
                 } 
-                // 3. 如果还在等待期 (显示当前真实时间)
                 else {
                     title.innerText = "新年倒计时 Loading...";
-                    
-                    // 获取 HH:MM:SS 格式的时间
                     const timeStr = nowTimeObj.toTimeString().split(' ')[0];
-                    
                     number.innerText = timeStr; 
-                    number.classList.remove('pulse'); // 时钟不需要心跳
-                    number.style.fontSize = "60px";   // 时间字符串比较长，字体改小一点防止换行
+                    number.classList.remove('pulse');
+                    number.style.fontSize = "60px";
                 }
             }, 1000);
         }
@@ -432,7 +445,6 @@
         function initMainScene() {
             STATE.mode = 'tree';
             
-            // 修改：柔和的球体 + 自发光材质
             const geos = [
                 new THREE.SphereGeometry(0.4, 16, 16), 
                 new THREE.IcosahedronGeometry(0.35, 1), 
@@ -454,15 +466,13 @@
                 instancedMeshes.push(mesh);
             });
 
-            // 1. 爱心形态 (Heart 3D)
+            // 1. 爱心形态
             function getHeartPos(i, total) {
                 const t = Math.random() * Math.PI * 2; 
                 const s = Math.cbrt(Math.random()); 
-                
                 const hx = 16 * Math.pow(Math.sin(t), 3);
                 const hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
                 const hz = (Math.random() - 0.5) * 8 * s; 
-
                 const scale = 0.8 * s; 
                 return new THREE.Vector3(hx * scale, hy * scale + 5, hz); 
             }
@@ -489,35 +499,28 @@
                 return pos;
             }
 
-            // 3. 羊头 (优化版，更突出)
+            // 3. 羊头
             function getSheepHeadPos(i, total) {
                 const rand = Math.random();
                 let pos = new THREE.Vector3();
-
-                // 比例调整：脸40%，头顶毛40%，耳朵20%
                 if (rand < 0.4) {
-                    // 脸蛋 (扁平)
                     const r = 5 + Math.random() * 2;
                     const phi = Math.acos(-1 + 2 * Math.random());
                     const theta = Math.random() * Math.PI * 2;
                     pos.set(r * Math.sin(phi) * Math.cos(theta) * 1.4, r * Math.sin(phi) * Math.sin(theta) * 0.8, r * Math.cos(phi) * 0.7);
                 } else if (rand < 0.8) {
-                    // 头顶卷毛 (集中)
                     const r = 3.5 + Math.random() * 1.5; 
                     const phi = Math.random() * Math.PI / 2;
                     const theta = Math.random() * Math.PI * 2;
                     pos.set(r * Math.sin(phi) * Math.cos(theta), r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi) * 0.8);
                     pos.y += 3.5; 
                 } else {
-                    // 耳朵 (长条下垂)
                     const isLeft = rand < 0.9 ? -1 : 1;
                     const t = Math.random() * Math.PI;
                     const earWidth = 2;
-                    
                     let ex = Math.sin(t) * earWidth * isLeft; 
                     let ey = -t * 6 * 0.8; 
                     let ez = Math.cos(t) * earWidth * 0.5 * (Math.random()-0.5); 
-                    
                     pos.set(ex + (isLeft * 6), ey + 2, ez + 2);
                 }
                 return pos;
@@ -608,7 +611,7 @@
             requestAnimationFrame(animate);
 
             TWEEN.update(time);
-            if(controls) controls.update(); // 必须更新控制器
+            if(controls) controls.update(); 
 
             if (instanceData.length === 0) {
                 composer.render();
@@ -638,10 +641,6 @@
             });
 
             if (STATE.mode === 'scatter') {
-                // 如果手没检测到，且没有用户鼠标拖拽(controls不活跃)，则稍微自转
-                // 这里我们稍微改一下：如果有 controls，通常不自动旋转以免打架
-                // 但为了氛围，我们可以让 controls 的 autoRotate 属性来控制
-                // 简单起见，这里仅在手势控制时强制旋转
                 const rSpeed = STATE.handDetected ? STATE.rotationSpeed * 5 : 0;
                 if(STATE.handDetected) scene.rotation.y += rSpeed;
             }
